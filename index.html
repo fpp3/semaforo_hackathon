@@ -1,0 +1,2010 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CONTROL Y MONITOREO VIAL - STM32 MODBUS RTU</title>
+    <style>
+        :root {
+            --bg-body: #121212;
+            --bg-panel: #1c1c1c;
+            --bg-panel-header: #262626;
+            --bg-element: #222222;
+            --bg-input: #151515;
+            --border: #383838;
+            --border-light: #505050;
+            --text-main: #d4d4d4;
+            --text-muted: #808080;
+            --text-bright: #ffffff;
+            
+            --btn-bg: #2a2a2a;
+            --btn-hover: #383838;
+            --btn-active: #4a4a4a;
+
+            --lamp-red: #d32f2f;
+            --lamp-red-off: #201010;
+            --lamp-yellow: #fbc02d;
+            --lamp-yellow-off: #242008;
+            --lamp-green: #388e3c;
+            --lamp-green-off: #0b1e0d;
+            --lamp-ped: #00acc1;
+            --lamp-ped-off: #081d21;
+
+            --status-ok: #4caf50;
+            --status-warn: #ffb300;
+            --status-err: #e53935;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            border-radius: 0 !important;
+            font-family: "Consolas", "Courier New", "Liberation Mono", "DejaVu Sans Mono", monospace;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            font-size: 13px;
+        }
+
+        /* HEADER DE CONTROL */
+        header {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .header-brand {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .header-brand h1 {
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: var(--text-bright);
+            text-transform: uppercase;
+        }
+
+        .header-brand p {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .connection-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        /* ESTADOS / BADGES */
+        .status-tag {
+            border: 1px solid var(--border-light);
+            background: #181818;
+            padding: 6px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-tag.connected {
+            border-color: var(--status-ok);
+            color: var(--status-ok);
+            background: #112013;
+        }
+
+        .status-tag.simulated {
+            border-color: var(--status-warn);
+            color: var(--status-warn);
+            background: #241e0a;
+        }
+
+        .status-indicator-dot {
+            width: 7px;
+            height: 7px;
+            background: currentColor;
+            display: inline-block;
+        }
+
+        /* BOTONES INDUSTRIALES */
+        button, .btn {
+            background: var(--btn-bg);
+            color: var(--text-main);
+            border: 1px solid var(--border-light);
+            padding: 7px 14px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            user-select: none;
+        }
+
+        button:hover {
+            background: var(--btn-hover);
+            color: var(--text-bright);
+            border-color: #777;
+        }
+
+        button:active {
+            background: var(--btn-active);
+        }
+
+        button.btn-danger {
+            border-color: var(--status-err);
+            color: var(--status-err);
+        }
+
+        button.btn-danger:hover {
+            background: #2e1010;
+            color: #ff6b6b;
+        }
+
+        /* GRID GENERAL */
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+
+        @media (max-width: 1080px) {
+            .layout-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* PANELES */
+        .panel {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            background: var(--bg-panel-header);
+            border-bottom: 1px solid var(--border);
+            padding: 8px 12px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #b0b0b0;
+        }
+
+        .panel-body {
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        /* CAJA DE SEMÁFOROS */
+        .intersection-block {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 14px;
+            background: #161616;
+            border: 1px solid var(--border);
+            padding: 16px;
+            align-items: center;
+        }
+
+        .traffic-post {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .traffic-post-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .traffic-housing {
+            background: #0f0f0f;
+            border: 2px solid #2d2d2d;
+            padding: 10px 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            align-items: center;
+            width: 76px;
+        }
+
+        .lamp {
+            width: 48px;
+            height: 48px;
+            border-radius: 50% !important; /* Lámparas circulares industriales */
+            border: 2px solid #222;
+            position: relative;
+            background-color: #1a1a1a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .lamp.red {
+            background-color: var(--lamp-red-off);
+            border-color: #331515;
+        }
+        .lamp.red.active {
+            background-color: var(--lamp-red);
+            border-color: #ff6666;
+            box-shadow: 0 0 12px rgba(211, 47, 47, 0.7);
+        }
+
+        .lamp.yellow {
+            background-color: var(--lamp-yellow-off);
+            border-color: #383010;
+        }
+        .lamp.yellow.active {
+            background-color: var(--lamp-yellow);
+            border-color: #fff176;
+            box-shadow: 0 0 12px rgba(251, 192, 45, 0.7);
+        }
+
+        .lamp.green {
+            background-color: var(--lamp-green-off);
+            border-color: #102a14;
+        }
+        .lamp.green.active {
+            background-color: var(--lamp-green);
+            border-color: #81c784;
+            box-shadow: 0 0 12px rgba(56, 142, 60, 0.7);
+        }
+
+        .lamp.pedestrian {
+            width: 42px;
+            height: 42px;
+            background-color: var(--lamp-ped-off);
+            border-color: #132b30;
+            color: #204047;
+            font-size: 11px;
+            letter-spacing: 0.5px;
+        }
+        .lamp.pedestrian.active {
+            background-color: var(--lamp-ped);
+            border-color: #4dd0e1;
+            color: #000;
+            box-shadow: 0 0 12px rgba(0, 172, 193, 0.7);
+        }
+
+        .traffic-post-state {
+            font-size: 11px;
+            color: #bbb;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .intersection-info {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            border-left: 1px solid var(--border);
+            border-right: 1px solid var(--border);
+            padding: 0 14px;
+            text-align: center;
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        .intersection-info b {
+            color: var(--text-main);
+        }
+
+        /* BARRA ESTADO FSM */
+        .fsm-status-row {
+            background: #181818;
+            border: 1px solid var(--border);
+            padding: 9px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .fsm-pill {
+            background: #333;
+            color: #fff;
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        /* METRICAS INDUSTRIALES */
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .data-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .data-cell {
+            background: #171717;
+            border: 1px solid var(--border);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .data-label {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .data-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-bright);
+        }
+
+        .data-sub {
+            font-size: 10px;
+            color: #666;
+        }
+
+        /* INDICADORES DISCRETOS (DI / ALARMAS) */
+        .discrete-flags {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .flag-box {
+            background: #171717;
+            border: 1px solid var(--border);
+            padding: 8px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #666;
+        }
+
+        .flag-box.on {
+            border-color: var(--status-ok);
+            color: var(--status-ok);
+            background: #121f14;
+        }
+
+        .flag-box.alarm-on {
+            border-color: var(--status-err);
+            color: var(--status-err);
+            background: #251212;
+        }
+
+        /* CONTROL DE MODO */
+        .mode-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+        }
+
+        @media (max-width: 900px) {
+            .mode-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .btn-mode-select {
+            background: #1a1a1a;
+            border: 1px solid var(--border-light);
+            color: #888;
+            padding: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .btn-mode-select:hover {
+            border-color: #888;
+            color: #ccc;
+        }
+
+        .btn-mode-select.selected {
+            background: #333333;
+            border-color: #999999;
+            color: #ffffff;
+        }
+
+        .btn-mode-select.selected.warn {
+            border-color: var(--status-warn);
+            color: var(--status-warn);
+            background: #282109;
+        }
+
+        .btn-mode-select.selected.danger {
+            border-color: var(--status-err);
+            color: var(--status-err);
+            background: #2a1111;
+        }
+
+        .btn-mode-select.selected.auto {
+            border-color: #00acc1;
+            color: #4dd0e1;
+            background: #0d272d;
+        }
+
+        /* BARRA SENSOR LDR */
+        .ldr-bar-container {
+            width: 100%;
+            height: 14px;
+            background: #101010;
+            border: 1px solid var(--border-light);
+            position: relative;
+            margin-top: 6px;
+            overflow: visible;
+        }
+
+        .ldr-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4caf50 0%, #ffb300 50%, #e53935 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .ldr-threshold-marker {
+            position: absolute;
+            top: -4px;
+            bottom: -4px;
+            width: 3px;
+            background: #ffffff;
+            box-shadow: 0 0 6px #fff;
+            transform: translateX(-50%);
+            pointer-events: none;
+        }
+
+        /* BARRA DE CORRIENTE Y TOLERANCIA */
+        .curr-bar-container {
+            width: 100%;
+            height: 16px;
+            background: #101010;
+            border: 1px solid var(--border-light);
+            position: relative;
+            margin-top: 6px;
+            overflow: hidden;
+        }
+
+        .curr-band-ok {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            background: rgba(76, 175, 80, 0.35);
+            border-left: 2px solid var(--status-ok);
+            border-right: 2px solid var(--status-ok);
+            transition: left 0.25s ease, width 0.25s ease;
+        }
+
+        .curr-marker-measured {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: #ffffff;
+            box-shadow: 0 0 6px #fff;
+            transform: translateX(-50%);
+            transition: left 0.15s ease;
+            z-index: 2;
+        }
+
+        /* TABLA DE INTERVALOS */
+        .scada-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+
+        .scada-table th {
+            background: #202020;
+            border: 1px solid var(--border);
+            padding: 7px 8px;
+            text-align: left;
+            font-weight: 700;
+            color: #999;
+            text-transform: uppercase;
+        }
+
+        .scada-table td {
+            border: 1px solid var(--border);
+            padding: 6px 8px;
+            vertical-align: middle;
+        }
+
+        .num-input {
+            width: 60px;
+            background: var(--bg-input);
+            border: 1px solid var(--border-light);
+            color: #fff;
+            padding: 4px 6px;
+            font-size: 11px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .num-input:focus {
+            outline: none;
+            border-color: #888;
+        }
+
+        /* CONSOLA INDUSTRIAL */
+        .terminal-box {
+            background: #0d0d0d;
+            border: 1px solid var(--border);
+            padding: 8px;
+            height: 150px;
+            overflow-y: auto;
+            font-size: 11px;
+            color: #a0a0a0;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .term-row {
+            display: flex;
+            gap: 8px;
+            line-height: 1.3;
+        }
+
+        .term-ts {
+            color: #555;
+            user-select: none;
+        }
+        .term-tx {
+            color: #80cbc4;
+        }
+        .term-rx {
+            color: #a5d6a7;
+        }
+        .term-err {
+            color: #ef9a9a;
+        }
+        .term-info {
+            color: #b0bec5;
+        }
+
+        footer {
+            border-top: 1px solid var(--border);
+            padding-top: 8px;
+            font-size: 11px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- BARRA SUPERIOR SCADA -->
+    <header>
+        <div class="header-brand">
+            <h1>CENTRAL DE CONTROL DE SEMÁFOROS • BLUEPILL STM32F103</h1>
+            <p>MAESTRO MODBUS RTU SOBRE RS-232/UART • 115200 BAUD, 8-N-1 • SLAVE ID: 1</p>
+        </div>
+        <div class="connection-group">
+            <div id="statusBadge" class="status-tag">
+                <span class="status-indicator-dot"></span>
+                <span id="statusText">DESCONECTADO</span>
+            </div>
+            <button id="btnConnect" onclick="toggleConnection()">
+                CONECTAR PUERTO SERIE
+            </button>
+            <button id="btnSimulate" onclick="toggleSimulation()">
+                MODO SIMULACIÓN
+            </button>
+        </div>
+    </header>
+
+    <!-- GRID DE PANELES -->
+    <div class="layout-grid">
+
+        <!-- PANEL IZQUIERDO: ESTADO DE LA INTERSECCIÓN Y TELEMETRÍA -->
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+
+            <!-- INTERSECCIÓN VIAL -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span>ESTADO DE LÁMPARAS (REG_LIGHTS_NS / REG_LIGHTS_EO)</span>
+                    <span id="fsmRawReg" style="font-size: 11px; color: #888;">REG_FSM_STATE: --</span>
+                </div>
+                <div class="panel-body">
+                    
+                    <div class="intersection-block">
+                        <!-- SEMAFORO NS -->
+                        <div class="traffic-post">
+                            <span class="traffic-post-title">NORTE - SUR</span>
+                            <div class="traffic-housing">
+                                <div id="lamp_ns_red" class="lamp red">R</div>
+                                <div id="lamp_ns_yellow" class="lamp yellow">A</div>
+                                <div id="lamp_ns_green" class="lamp green">V</div>
+                                <div id="lamp_ns_ped" class="lamp pedestrian">PEAT</div>
+                            </div>
+                            <span id="label_ns_state" class="traffic-post-state">APAGADO</span>
+                        </div>
+
+                        <!-- DATOS DE CRUCE -->
+                        <div class="intersection-info">
+                            <div>ESCLAVO: <b>ID #1</b></div>
+                            <div>VELOCIDAD: <b>115200</b></div>
+                            <div style="margin-top: 6px; border-top: 1px solid var(--border); padding-top: 6px;">
+                                ENTRADA 220V: <br><b id="txtMainsShort">--</b>
+                            </div>
+                        </div>
+
+                        <!-- SEMAFORO EO -->
+                        <div class="traffic-post">
+                            <span class="traffic-post-title">ESTE - OESTE</span>
+                            <div class="traffic-housing">
+                                <div id="lamp_eo_red" class="lamp red">R</div>
+                                <div id="lamp_eo_yellow" class="lamp yellow">A</div>
+                                <div id="lamp_eo_green" class="lamp green">V</div>
+                                <div id="lamp_eo_ped" class="lamp pedestrian">PEAT</div>
+                            </div>
+                            <span id="label_eo_state" class="traffic-post-state">APAGADO</span>
+                        </div>
+                    </div>
+
+                    <!-- FSM REG DETALLE -->
+                    <div class="fsm-status-row">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span id="fsmBadge" class="fsm-pill">SIN DATOS</span>
+                            <span id="fsmDesc" style="color: #bbb;">Esperando trama de respuesta Modbus...</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- TELEMETRÍA Y ENTRADAS DIGITALES -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span>TELEMETRÍA ELÉCTRICA Y SENSORES</span>
+                    <span style="color: #777;">FREERTOS TASK: vReadInputsTask</span>
+                </div>
+                <div class="panel-body">
+                    
+                    <div class="data-grid">
+                        <div class="data-cell">
+                            <span class="data-label">BATERÍA (REG 11)</span>
+                            <span id="valBattery" class="data-value">--.- V</span>
+                            <span class="data-sub">NOMINAL 12.6V</span>
+                        </div>
+                        <div class="data-cell">
+                            <span class="data-label">CORRIENTE (REG 12)</span>
+                            <span id="valCurrent" class="data-value">-- mA</span>
+                            <span class="data-sub">CARGA ESTIMADA</span>
+                        </div>
+                        <div class="data-cell">
+                            <span class="data-label">RED 220V (BIT 0)</span>
+                            <span id="valMains" class="data-value">--</span>
+                            <span class="data-sub">ALIMENTACIÓN CA</span>
+                        </div>
+                        <div class="data-cell">
+                            <span class="data-label">SENSOR LDR (REG 15)</span>
+                            <span id="valLdr" class="data-value">-- mV</span>
+                            <span class="data-sub">PIN PB0 • ADC1 CH8</span>
+                        </div>
+                    </div>
+
+                    <div class="discrete-flags">
+                        <div id="flagMains" class="flag-box">
+                            <span>ALIMENTACIÓN 220VAC</span>
+                            <span id="flagMainsState">[DESCONOCIDO]</span>
+                        </div>
+                        <div id="flagLdr" class="flag-box">
+                            <span>ESTADO LDR (PB0)</span>
+                            <span id="flagLdrState">[DÍA]</span>
+                        </div>
+                        <div id="flagFaultBat" class="flag-box">
+                            <span>ALARMA: BATERÍA BAJA</span>
+                            <span id="flagFaultBatState">[NORMAL]</span>
+                        </div>
+                        <div id="flagFaultLamp" class="flag-box">
+                            <span>FALLA: LÁMPARA QUEMADA</span>
+                            <span id="flagFaultLampState">[NORMAL]</span>
+                        </div>
+                        <div id="flagFaultOvercurrent" class="flag-box">
+                            <span>FALLA: SOBRECORRIENTE</span>
+                            <span id="flagFaultOvercurrentState">[NORMAL]</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- PANEL MONITOREO DE CORRIENTE Y CALIBRACIÓN DE UMBRALES (POTE PB1) -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span>MONITOREO DE CORRIENTE Y UMBRALES DE FALLA (POTE PB1)</span>
+                    <span id="currentStatusTag" class="status-tag connected">CARGA: NORMAL [OK]</span>
+                </div>
+                <div class="panel-body">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <span class="data-label">CORRIENTE MEDIDA (PB1 • ADC1 CH9)</span>
+                            <div id="currMeasuredDisplay" style="font-size: 20px; font-weight: 700; color: var(--text-bright); margin-top: 4px;">-- mA</div>
+                            <span class="data-sub">POTENCIÓMETRO SIMULADOR (0 A 1200 mA)</span>
+                        </div>
+                        <div>
+                            <span class="data-label">CORRIENTE ESPERADA (REG 20)</span>
+                            <div id="currExpectedDisplay" style="font-size: 16px; font-weight: 700; color: #4dd0e1; margin-top: 4px;">-- mA</div>
+                            <span id="currLampsActiveSub" class="data-sub">-- LÁMPARA(S) ACTIVA(S)</span>
+                        </div>
+                        <div style="text-align: right;">
+                            <span class="data-label">BANDA ADMISIBLE (REG 18 / 19)</span>
+                            <div id="currRangeDisplay" style="font-size: 16px; font-weight: 700; color: #81c784; margin-top: 4px;">-- a -- mA</div>
+                            <span id="currTolSub" class="data-sub">TOLERANCIA: ±--%</span>
+                        </div>
+                    </div>
+
+                    <!-- Barra gráfica de corriente con rango admisible y aguja marcadora -->
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">
+                            <span>0 mA</span>
+                            <span id="txtCurrBandLabels" style="color: #81c784;">RANGO ADMISIBLE</span>
+                            <span>1200 mA (MÁX POTE)</span>
+                        </div>
+                        <div class="curr-bar-container">
+                            <div id="currBandOk" class="curr-band-ok" style="left: 20%; width: 25%;"></div>
+                            <div id="currMarkerMeasured" class="curr-marker-measured" style="left: 33%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Calibración y Estandarización de Parámetros -->
+                    <div style="border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                        <span class="data-label">CALIBRACIÓN DE PARÁMETROS DE CARGA (MODBUS 0x06 • REG 18 Y 19)</span>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <div style="display: flex; align-items: center; gap: 4px;">
+                                <span style="font-size: 11px; color: #bbb;">LÁMPARA:</span>
+                                <input type="number" id="inputLampCurrent" class="num-input" min="50" max="800" step="10" value="200" style="width: 70px; text-align: right; padding-right: 6px;">
+                                <span style="font-weight: 700;">mA</span>
+                                <button onclick="writeLampCurrent()" style="font-size: 10px; padding: 4px 8px;">ESCRIBIR (REG 18)</button>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 4px; margin-left: 6px;">
+                                <span style="font-size: 11px; color: #bbb;">TOLERANCIA:</span>
+                                <input type="number" id="inputCurrentTol" class="num-input" min="5" max="80" step="5" value="35" style="width: 55px; text-align: right; padding-right: 6px;">
+                                <span style="font-weight: 700;">%</span>
+                                <button onclick="writeCurrentTolerance()" style="font-size: 10px; padding: 4px 8px;">ESCRIBIR (REG 19)</button>
+                            </div>
+                        </div>
+                        <!-- Presets de estandarización -->
+                        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 2px;">
+                            <span style="font-size: 10px; color: var(--text-muted);">PERFILES:</span>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="setCurrentPreset(200, 35)">ESTÁNDAR (200 mA, ±35%)</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="setCurrentPreset(200, 20)">ESTRICTO (200 mA, ±20%)</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="setCurrentPreset(200, 50)">AMPLIO (200 mA, ±50%)</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="setCurrentPreset(350, 25)">HALÓGENAS (350 mA, ±25%)</button>
+                        </div>
+                    </div>
+
+                    <!-- Inyección / Emulador de Potenciómetro PB1 para pruebas -->
+                    <div id="simCurrentControls" style="border-top: 1px solid var(--border); padding-top: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                        <span class="data-label" style="color: var(--status-warn);">EMULADOR POTENCIÓMETRO (PB1):</span>
+                        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simInjectFault('normal')">✔️ NORMAL</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simInjectFault('burned')">⚠️ LÁMPARA QUEMADA</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simInjectFault('overcurrent')">🔥 SOBRECORRIENTE</button>
+                            <input type="range" id="simCurrSlider" min="0" max="1200" step="10" value="400" style="width: 100px;" oninput="simOnCurrSliderChange(this.value)">
+                            <span id="simCurrSliderVal" style="font-size: 11px; min-width: 55px;">400 mA</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+
+        <!-- PANEL DERECHO: CONTROL DE MODO, SENSOR LDR, INTERVALOS Y CONSOLA -->
+        <div style="display: flex; flex-direction: column; gap: 14px;">
+
+            <!-- CONTROL DE MODO DE OPERACIÓN -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span>MODO DE OPERACIÓN (REG_OP_MODE / REG 17)</span>
+                    <span id="currentModeLabel" style="color: #bbb;">ACTUAL: --</span>
+                </div>
+                <div class="panel-body">
+                    <div class="mode-row">
+                        <div id="btnMode0" class="btn-mode-select" onclick="setOpMode(0)">
+                            [0] NORMAL (FSM)
+                        </div>
+                        <div id="btnMode1" class="btn-mode-select warn" onclick="setOpMode(1)">
+                            [1] DESTELLANTE
+                        </div>
+                        <div id="btnMode2" class="btn-mode-select danger" onclick="setOpMode(2)">
+                            [2] TODO ROJO
+                        </div>
+                        <div id="btnMode3" class="btn-mode-select auto selected" onclick="setOpMode(3)">
+                            [3] AUTO LDR
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PANEL SENSOR LDR Y CONTROL DE UMBRAL NOCTURNO -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span>SENSOR LDR (PB0) Y CONTROL NOCTURNO (REG 15 / REG 16)</span>
+                    <span id="ldrConditionTag" class="status-tag">ESTADO: --</span>
+                </div>
+                <div class="panel-body">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 10px;">
+                        <div>
+                            <span class="data-label">TENSIÓN MEDIDA LDR (PB0 / ADC1 CH8)</span>
+                            <div id="ldrVoltageDisplay" style="font-size: 20px; font-weight: 700; color: var(--text-bright); margin-top: 4px;">-- mV (-- V)</div>
+                            <span class="data-sub">CIRCUITO: 3.3V — 10k — [PB0] — LDR — GND</span>
+                        </div>
+                        <div style="text-align: right;">
+                            <span class="data-label">UMBRAL ACTIVO (REG 16)</span>
+                            <div id="ldrThresholdDisplay" style="font-size: 16px; font-weight: 700; color: #ffb300; margin-top: 4px;">2000 mV</div>
+                            <span class="data-sub">TENSIÓN ≥ UMBRAL = NOCHE</span>
+                        </div>
+                    </div>
+
+                    <!-- Barra de nivel analógico y marcador de umbral -->
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">
+                            <span>0V (LUZ MÁXIMA / DÍA)</span>
+                            <span id="txtLdrThresholdPos">UMBRAL (2000 mV)</span>
+                            <span>3.3V (OSCURIDAD / NOCHE)</span>
+                        </div>
+                        <div class="ldr-bar-container">
+                            <div id="ldrBarFill" class="ldr-bar-fill" style="width: 20%;"></div>
+                            <div id="ldrBarThreshold" class="ldr-threshold-marker" style="left: 60.6%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Configuración de umbral -->
+                    <div style="border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                        <span class="data-label">CONFIGURAR UMBRAL DE CONMUTACIÓN NOCHE (MODBUS 0x06 • REG 16)</span>
+                        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <input type="number" id="inputLdrThreshold" class="num-input" min="100" max="3200" step="50" value="2000" style="width: 90px; text-align: right; padding-right: 8px;">
+                            <span style="font-weight: 700;">mV</span>
+                            <button onclick="writeLdrThreshold()">ESCRIBIR UMBRAL</button>
+                            <button style="font-size: 10px; padding: 5px 8px;" onclick="setThresholdPreset(1500)">1500 mV (SENSIBLE)</button>
+                            <button style="font-size: 10px; padding: 5px 8px;" onclick="setThresholdPreset(2000)">2000 mV (ESTÁNDAR)</button>
+                            <button style="font-size: 10px; padding: 5px 8px;" onclick="setThresholdPreset(2500)">2500 mV (OSCURO)</button>
+                        </div>
+                    </div>
+
+                    <!-- Simulación manual de LDR -->
+                    <div id="simLdrControls" style="border-top: 1px solid var(--border); padding-top: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                        <span class="data-label" style="color: var(--status-warn);">EMULADOR LDR (MODO SIMULACIÓN):</span>
+                        <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simSetLdrVoltage(500)">☀️ DÍA (500 mV)</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simSetLdrVoltage(2600)">🌙 NOCHE (2600 mV)</button>
+                            <input type="range" id="simLdrSlider" min="100" max="3200" step="50" value="600" style="width: 110px;" oninput="simOnSliderChange(this.value)">
+                            <span id="simLdrSliderVal" style="font-size: 11px; min-width: 50px;">600 mV</span>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- TABLA DE INTERVALOS DE TIEMPO -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span>CONFIGURACIÓN DE INTERVALOS (REG 0 .. REG 5)</span>
+                    <div style="display: flex; gap: 4px;">
+                        <button style="padding: 3px 6px; font-size: 10px;" onclick="applyPreset('normal')">STD</button>
+                        <button style="padding: 3px 6px; font-size: 10px;" onclick="applyPreset('peak')">PICO</button>
+                        <button style="padding: 3px 6px; font-size: 10px;" onclick="applyPreset('fast')">DEMO</button>
+                    </div>
+                </div>
+                <div class="panel-body" style="padding: 10px 14px;">
+                    <table class="scada-table">
+                        <thead>
+                            <tr>
+                                <th>REG</th>
+                                <th>DESCRIPCIÓN DE FASE</th>
+                                <th style="width: 70px;">SEG</th>
+                                <th style="width: 70px;">COMANDO</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>REG 0</td>
+                                <td>INT 1: NS VERDE + PEAT / EO ROJO</td>
+                                <td><input type="number" id="time_int1" class="num-input" min="1" max="255" value="25"></td>
+                                <td><button style="padding: 3px 6px; font-size: 10px; width: 100%;" onclick="writeSingleTime(0, 'time_int1')">ESCRIBIR</button></td>
+                            </tr>
+                            <tr>
+                                <td>REG 1</td>
+                                <td>INT 2: NS AMARILLO / EO ROJO</td>
+                                <td><input type="number" id="time_int2" class="num-input" min="1" max="255" value="3"></td>
+                                <td><button style="padding: 3px 6px; font-size: 10px; width: 100%;" onclick="writeSingleTime(1, 'time_int2')">ESCRIBIR</button></td>
+                            </tr>
+                            <tr>
+                                <td>REG 2</td>
+                                <td>INT 3: DESPEJE TODO ROJO</td>
+                                <td><input type="number" id="time_int3" class="num-input" min="1" max="255" value="2"></td>
+                                <td><button style="padding: 3px 6px; font-size: 10px; width: 100%;" onclick="writeSingleTime(2, 'time_int3')">ESCRIBIR</button></td>
+                            </tr>
+                            <tr>
+                                <td>REG 3</td>
+                                <td>INT 4: EO VERDE + PEAT / NS ROJO</td>
+                                <td><input type="number" id="time_int4" class="num-input" min="1" max="255" value="25"></td>
+                                <td><button style="padding: 3px 6px; font-size: 10px; width: 100%;" onclick="writeSingleTime(3, 'time_int4')">ESCRIBIR</button></td>
+                            </tr>
+                            <tr>
+                                <td>REG 4</td>
+                                <td>INT 5: EO AMARILLO / NS ROJO</td>
+                                <td><input type="number" id="time_int5" class="num-input" min="1" max="255" value="3"></td>
+                                <td><button style="padding: 3px 6px; font-size: 10px; width: 100%;" onclick="writeSingleTime(4, 'time_int5')">ESCRIBIR</button></td>
+                            </tr>
+                            <tr>
+                                <td>REG 5</td>
+                                <td>INT 6: DESPEJE TODO ROJO</td>
+                                <td><input type="number" id="time_int6" class="num-input" min="1" max="255" value="2"></td>
+                                <td><button style="padding: 3px 6px; font-size: 10px; width: 100%;" onclick="writeSingleTime(5, 'time_int6')">ESCRIBIR</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                        <button onclick="writeAllTimes()">
+                            ESCRIBIR TODOS LOS INTERVALOS (0x06 BATCH)
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MONITOR DE TRAMAS RAW -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span>MONITOR SERIE MODBUS RTU</span>
+                    <button style="padding: 2px 6px; font-size: 10px;" onclick="clearConsole()">LIMPIAR</button>
+                </div>
+                <div class="panel-body" style="padding: 8px 12px;">
+                    <div id="serialConsole" class="terminal-box">
+                        <div class="term-row"><span class="term-ts">[00:00:00]</span> <span class="term-info">TERMINAL EN ESPERA. CONECTE PUERTO COM O ACTIVE MODO SIMULACIÓN.</span></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <footer>
+        <span>TERMINAL DE CONTROL VIAL STM32F103 • SISTEMA MODBUS RTU SLAVE ID 1</span>
+        <span>HACKATHON 2026</span>
+    </footer>
+
+    <!-- LÓGICA MODBUS RTU Y WEB SERIAL -->
+    <script>
+        const SLAVE_ID = 1;
+        const REG_COUNT = 21;
+        const BAUDRATE = 115200;
+
+        const REG = {
+            TIME_INT1: 0,
+            TIME_INT2: 1,
+            TIME_INT3: 2,
+            TIME_INT4: 3,
+            TIME_INT5: 4,
+            TIME_INT6: 5,
+            TIME_INT7: 6,
+            TIME_INT8: 7,
+            FSM_STATE: 8,
+            LIGHTS_NS: 9,
+            LIGHTS_EO: 10,
+            BATTERY_MV: 11,
+            CURRENT_MA: 12,
+            INPUTS_DIGITAL: 13,
+            FAULT_FLAGS: 14,
+            LDR_MV: 15,
+            LDR_THRESHOLD_MV: 16,
+            OP_MODE: 17,
+            LAMP_CURRENT_MA: 18,
+            CURRENT_TOL_PCT: 19,
+            EXPECTED_CURR_MA: 20
+        };
+
+        const LIGHT_RED = 1 << 0;
+        const LIGHT_YELLOW = 1 << 1;
+        const LIGHT_GREEN = 1 << 2;
+        const LIGHT_PEDESTRIAN = 1 << 3;
+
+        const INPUT_MAINS_220V = 1 << 0;
+        const INPUT_LDR_NIGHT  = 1 << 1;
+
+        const FAULT_LAMP_BURNED = 1 << 0;
+        const FAULT_BATTERY_LOW = 1 << 1;
+        const FAULT_OVERCURRENT = 1 << 2;
+
+        let currentRegisters = new Array(REG_COUNT).fill(0);
+        let port = null;
+        let reader = null;
+        let writer = null;
+        let isConnected = false;
+        let isSimulating = false;
+        let pollingInterval = null;
+        let simInterval = null;
+        let simCycleTimer = 0;
+        let simState = 0;
+        let simFollowExpected = true;
+
+        // VALORES BASE INICIALES
+        currentRegisters[REG.TIME_INT1] = 25;
+        currentRegisters[REG.TIME_INT2] = 3;
+        currentRegisters[REG.TIME_INT3] = 2;
+        currentRegisters[REG.TIME_INT4] = 25;
+        currentRegisters[REG.TIME_INT5] = 3;
+        currentRegisters[REG.TIME_INT6] = 2;
+        currentRegisters[REG.TIME_INT7] = 0;
+        currentRegisters[REG.TIME_INT8] = 0;
+        currentRegisters[REG.FSM_STATE] = 0;
+        currentRegisters[REG.BATTERY_MV] = 12600;
+        currentRegisters[REG.CURRENT_MA] = 400;
+        currentRegisters[REG.INPUTS_DIGITAL] = INPUT_MAINS_220V;
+        currentRegisters[REG.FAULT_FLAGS] = 0;
+        currentRegisters[REG.LDR_MV] = 600;
+        currentRegisters[REG.LDR_THRESHOLD_MV] = 2000;
+        currentRegisters[REG.OP_MODE] = 3; // Modo Auto LDR por defecto
+        currentRegisters[REG.LAMP_CURRENT_MA] = 200;
+        currentRegisters[REG.CURRENT_TOL_PCT] = 35;
+        currentRegisters[REG.EXPECTED_CURR_MA] = 400;
+
+        // ==========================================
+        // CÁLCULO DE CRC16 MODBUS (0xA001)
+        // ==========================================
+        function calculateCRC(buf, len) {
+            let crc = 0xFFFF;
+            for (let pos = 0; pos < len; pos++) {
+                crc ^= buf[pos];
+                for (let i = 8; i !== 0; i--) {
+                    if ((crc & 0x0001) !== 0) {
+                        crc = (crc >>> 1) ^ 0xA001;
+                    } else {
+                        crc = (crc >>> 1);
+                    }
+                }
+            }
+            return crc & 0xFFFF;
+        }
+
+        function buildReadHoldingRegistersFrame(slaveId, startAddr, regCount) {
+            const frame = new Uint8Array(8);
+            frame[0] = slaveId;
+            frame[1] = 0x03;
+            frame[2] = (startAddr >> 8) & 0xFF;
+            frame[3] = startAddr & 0xFF;
+            frame[4] = (regCount >> 8) & 0xFF;
+            frame[5] = regCount & 0xFF;
+            const crc = calculateCRC(frame, 6);
+            frame[6] = crc & 0xFF;
+            frame[7] = (crc >> 8) & 0xFF;
+            return frame;
+        }
+
+        function buildWriteSingleRegisterFrame(slaveId, regAddr, regVal) {
+            const frame = new Uint8Array(8);
+            frame[0] = slaveId;
+            frame[1] = 0x06;
+            frame[2] = (regAddr >> 8) & 0xFF;
+            frame[3] = regAddr & 0xFF;
+            frame[4] = (regVal >> 8) & 0xFF;
+            frame[5] = regVal & 0xFF;
+            const crc = calculateCRC(frame, 6);
+            frame[6] = crc & 0xFF;
+            frame[7] = (crc >> 8) & 0xFF;
+            return frame;
+        }
+
+        // ==========================================
+        // LOGS EN CONSOLA MONOCROMÁTICA
+        // ==========================================
+        function hexString(buf) {
+            return Array.from(buf).map(b => b.toString(16).padStart(2, '0').toUpperCase()).join(' ');
+        }
+
+        function logConsole(type, msg) {
+            const consoleEl = document.getElementById('serialConsole');
+            const time = new Date().toTimeString().split(' ')[0];
+            const row = document.createElement('div');
+            row.className = 'term-row';
+
+            let typeClass = 'term-info';
+            if (type === 'TX') typeClass = 'term-tx';
+            if (type === 'RX') typeClass = 'term-rx';
+            if (type === 'ERR') typeClass = 'term-err';
+
+            row.innerHTML = `<span class="term-ts">[${time}]</span> <span class="${typeClass}">[${type}] ${msg}</span>`;
+            consoleEl.appendChild(row);
+            consoleEl.scrollTop = consoleEl.scrollHeight;
+        }
+
+        function clearConsole() {
+            document.getElementById('serialConsole').innerHTML = '';
+        }
+
+        // ==========================================
+        // ACTUALIZACIÓN DE INTERFAZ SCADA
+        // ==========================================
+        function updateUI() {
+            const ns = currentRegisters[REG.LIGHTS_NS];
+            const eo = currentRegisters[REG.LIGHTS_EO];
+            const fsmState = currentRegisters[REG.FSM_STATE];
+            const mode = currentRegisters[REG.OP_MODE];
+
+            // Animación continua de destello de precaución (1 Hz: 500ms ON / 500ms OFF)
+            const isBlinkOn = (Math.floor(Date.now() / 500) % 2 === 0);
+
+            if (fsmState === 99) {
+                // Modo Intermitente / Destellante activo
+                setLamp('lamp_ns_red', false);
+                setLamp('lamp_ns_yellow', isBlinkOn);
+                setLamp('lamp_ns_green', false);
+                setLamp('lamp_ns_ped', false);
+
+                setLamp('lamp_eo_red', false);
+                setLamp('lamp_eo_yellow', isBlinkOn);
+                setLamp('lamp_eo_green', false);
+                setLamp('lamp_eo_ped', false);
+
+                document.getElementById('label_ns_state').textContent = isBlinkOn ? 'AMARILLO (DESTELLO)' : 'APAGADO';
+                document.getElementById('label_eo_state').textContent = isBlinkOn ? 'AMARILLO (DESTELLO)' : 'APAGADO';
+            } else {
+                // Luces Norte-Sur
+                setLamp('lamp_ns_red', (ns & LIGHT_RED) !== 0);
+                setLamp('lamp_ns_yellow', (ns & LIGHT_YELLOW) !== 0);
+                setLamp('lamp_ns_green', (ns & LIGHT_GREEN) !== 0);
+                setLamp('lamp_ns_ped', (ns & LIGHT_PEDESTRIAN) !== 0);
+
+                // Luces Este-Oeste
+                setLamp('lamp_eo_red', (eo & LIGHT_RED) !== 0);
+                setLamp('lamp_eo_yellow', (eo & LIGHT_YELLOW) !== 0);
+                setLamp('lamp_eo_green', (eo & LIGHT_GREEN) !== 0);
+                setLamp('lamp_eo_ped', (eo & LIGHT_PEDESTRIAN) !== 0);
+
+                // Textos de estado
+                document.getElementById('label_ns_state').textContent = getLightsText(ns);
+                document.getElementById('label_eo_state').textContent = getLightsText(eo);
+            }
+
+            // FSM
+            const fsmBadge = document.getElementById('fsmBadge');
+            const fsmDesc = document.getElementById('fsmDesc');
+            document.getElementById('fsmRawReg').textContent = `REG_FSM_STATE: ${fsmState}`;
+
+            if (fsmState === 98) {
+                fsmBadge.textContent = 'ESTADO 98: TODO ROJO';
+                fsmBadge.style.background = '#421414';
+                fsmBadge.style.color = '#ff8080';
+                fsmDesc.textContent = 'Modo de seguridad / Todo rojo forzado';
+            } else if (fsmState === 99) {
+                fsmBadge.textContent = 'ESTADO 99: INTERMITENTE';
+                fsmBadge.style.background = '#382f0b';
+                fsmBadge.style.color = '#ffd54f';
+                fsmDesc.textContent = 'Destello de precaución (Amarillo intermitente)';
+            } else {
+                fsmBadge.textContent = `ESTADO ${fsmState}: INTERVALO ${fsmState + 1}`;
+                fsmBadge.style.background = '#222';
+                fsmBadge.style.color = '#fff';
+                const descripciones = [
+                    "Int 1: Norte-Sur Verde (+ Peat) / Este-Oeste Rojo",
+                    "Int 2: Norte-Sur Amarillo / Este-Oeste Rojo",
+                    "Int 3: Despeje Todo Rojo",
+                    "Int 4: Este-Oeste Verde (+ Peat) / Norte-Sur Rojo",
+                    "Int 5: Este-Oeste Amarillo / Norte-Sur Rojo",
+                    "Int 6: Despeje Todo Rojo"
+                ];
+                fsmDesc.textContent = descripciones[fsmState] || `Estado ${fsmState}`;
+            }
+
+            // Modo activo
+            document.getElementById('btnMode0').className = 'btn-mode-select' + (mode === 0 ? ' selected' : '');
+            document.getElementById('btnMode1').className = 'btn-mode-select warn' + (mode === 1 ? ' selected' : '');
+            document.getElementById('btnMode2').className = 'btn-mode-select danger' + (mode === 2 ? ' selected' : '');
+            document.getElementById('btnMode3').className = 'btn-mode-select auto' + (mode === 3 ? ' selected' : '');
+            const modeNames = ["NORMAL (FSM)", "DESTELLANTE", "TODO ROJO", "AUTO LDR (UMBRAL)"];
+            document.getElementById('currentModeLabel').textContent = `ACTUAL: ${modeNames[mode] || mode}`;
+
+            // Telemetría
+            const batMv = currentRegisters[REG.BATTERY_MV];
+            document.getElementById('valBattery').textContent = `${(batMv / 1000).toFixed(2)} V`;
+
+            const currentMa = currentRegisters[REG.CURRENT_MA];
+            document.getElementById('valCurrent').textContent = `${currentMa} mA`;
+
+            const inputs = currentRegisters[REG.INPUTS_DIGITAL];
+            const mainsOk = (inputs & INPUT_MAINS_220V) !== 0;
+
+            document.getElementById('valMains').textContent = mainsOk ? 'OK (220V)' : 'FALLA CA';
+            document.getElementById('valMains').style.color = mainsOk ? 'var(--status-ok)' : 'var(--status-err)';
+            document.getElementById('txtMainsShort').textContent = mainsOk ? 'PRESENTE' : 'CORTE DE LÍNEA';
+            document.getElementById('txtMainsShort').style.color = mainsOk ? 'var(--status-ok)' : 'var(--status-err)';
+
+            // Telemetría y estado de sensor LDR en PB0
+            const ldrMv = currentRegisters[REG.LDR_MV];
+            const threshMv = currentRegisters[REG.LDR_THRESHOLD_MV] || 2000;
+            const isNight = ldrMv >= threshMv;
+
+            document.getElementById('valLdr').textContent = `${ldrMv} mV`;
+            document.getElementById('valLdr').style.color = isNight ? 'var(--status-warn)' : 'var(--status-ok)';
+            document.getElementById('ldrVoltageDisplay').textContent = `${ldrMv} mV (${(ldrMv / 1000).toFixed(2)} V)`;
+            document.getElementById('ldrThresholdDisplay').textContent = `${threshMv} mV`;
+            document.getElementById('txtLdrThresholdPos').textContent = `UMBRAL (${threshMv} mV)`;
+
+            // Barra gráfica analógica LDR (0 a 3300 mV)
+            const fillPct = Math.min(100, Math.max(0, (ldrMv / 3300) * 100));
+            const threshPct = Math.min(100, Math.max(0, (threshMv / 3300) * 100));
+            document.getElementById('ldrBarFill').style.width = `${fillPct}%`;
+            document.getElementById('ldrBarThreshold').style.left = `${threshPct}%`;
+
+            // Tag ambiental
+            const condTag = document.getElementById('ldrConditionTag');
+            if (isNight) {
+                condTag.className = 'status-tag simulated';
+                condTag.textContent = '🌙 OSCURIDAD (NOCHE)';
+            } else {
+                condTag.className = 'status-tag connected';
+                condTag.textContent = '☀️ LUZ DE DÍA (NORMAL)';
+            }
+
+            // Flags discretas
+            const flagMains = document.getElementById('flagMains');
+            flagMains.className = 'flag-box' + (mainsOk ? ' on' : ' alarm-on');
+            document.getElementById('flagMainsState').textContent = mainsOk ? '[ACTIVO]' : '[CORTE]';
+
+            const flagLdr = document.getElementById('flagLdr');
+            flagLdr.className = 'flag-box' + (isNight ? ' alarm-on' : ' on');
+            document.getElementById('flagLdrState').textContent = isNight ? '[NOCHE • DESTELLANTE]' : '[DÍA • NORMAL]';
+
+            const faults = currentRegisters[REG.FAULT_FLAGS];
+            const batFault = (faults & FAULT_BATTERY_LOW) !== 0;
+            const lampFault = (faults & FAULT_LAMP_BURNED) !== 0;
+            const overFault = (faults & FAULT_OVERCURRENT) !== 0;
+
+            const fBat = document.getElementById('flagFaultBat');
+            fBat.className = 'flag-box' + (batFault ? ' alarm-on' : '');
+            document.getElementById('flagFaultBatState').textContent = batFault ? '[FALLA]' : '[OK]';
+
+            const fLamp = document.getElementById('flagFaultLamp');
+            fLamp.className = 'flag-box' + (lampFault ? ' alarm-on' : '');
+            document.getElementById('flagFaultLampState').textContent = lampFault ? '[FALLA]' : '[OK]';
+
+            const fOver = document.getElementById('flagFaultOvercurrent');
+            if (fOver) {
+                fOver.className = 'flag-box' + (overFault ? ' alarm-on' : '');
+                document.getElementById('flagFaultOvercurrentState').textContent = overFault ? '[FALLA]' : '[OK]';
+            }
+
+            // Monitoreo y Diagnóstico de Corriente (Pote PB1)
+            const measuredMa = currentRegisters[REG.CURRENT_MA];
+            let expectedMa = currentRegisters[REG.EXPECTED_CURR_MA];
+            const lampNominal = currentRegisters[REG.LAMP_CURRENT_MA] || 200;
+            const tolPct = currentRegisters[REG.CURRENT_TOL_PCT] || 35;
+
+            // Calcular cantidad de lámparas activas según la fase actual
+            let activeCount = 0;
+            if (fsmState === 99) {
+                activeCount = 2; // 2 amarillos
+            } else {
+                for (let b = 0; b < 4; b++) {
+                    if (ns & (1 << b)) activeCount++;
+                    if (eo & (1 << b)) activeCount++;
+                }
+            }
+
+            if (expectedMa === 0 && activeCount > 0) {
+                expectedMa = activeCount * lampNominal;
+            }
+
+            const iMin = Math.round(expectedMa * (100 - tolPct) / 100);
+            const iMax = Math.round(expectedMa * (100 + tolPct) / 100);
+
+            const elMeas = document.getElementById('currMeasuredDisplay');
+            if (elMeas) elMeas.textContent = `${measuredMa} mA`;
+
+            const elExp = document.getElementById('currExpectedDisplay');
+            if (elExp) elExp.textContent = `${expectedMa} mA`;
+
+            const elAct = document.getElementById('currLampsActiveSub');
+            if (elAct) elAct.textContent = `${activeCount} LÁMPARA(S) ACTIVA(S)`;
+
+            const elRange = document.getElementById('currRangeDisplay');
+            if (elRange) elRange.textContent = `${iMin} - ${iMax} mA`;
+
+            const elTol = document.getElementById('currTolSub');
+            if (elTol) elTol.textContent = `TOLERANCIA: ±${tolPct}% (${lampNominal} mA/lámpara)`;
+
+            const elBandLbl = document.getElementById('txtCurrBandLabels');
+            if (elBandLbl) elBandLbl.textContent = `RANGO ADMISIBLE [${iMin} .. ${iMax} mA]`;
+
+            // Barra gráfica de corriente (escala 0 a 1200 mA)
+            const clampPct = (val) => Math.min(100, Math.max(0, (val / 1200) * 100));
+            const bandLeft = clampPct(iMin);
+            const bandWidth = clampPct(iMax) - bandLeft;
+            const markerPos = clampPct(measuredMa);
+
+            const currBandEl = document.getElementById('currBandOk');
+            if (currBandEl) {
+                currBandEl.style.left = `${bandLeft}%`;
+                currBandEl.style.width = `${Math.max(1, bandWidth)}%`;
+            }
+
+            const markerEl = document.getElementById('currMarkerMeasured');
+            if (markerEl) {
+                markerEl.style.left = `${markerPos}%`;
+            }
+
+            // Tag de estado de corriente
+            const currTag = document.getElementById('currentStatusTag');
+            if (currTag) {
+                if (lampFault) {
+                    currTag.className = 'status-tag simulated';
+                    currTag.style.borderColor = 'var(--status-err)';
+                    currTag.style.color = 'var(--status-err)';
+                    currTag.style.background = '#281010';
+                    currTag.textContent = '⚠️ FALLA: LÁMPARA QUEMADA';
+                } else if (overFault) {
+                    currTag.className = 'status-tag simulated';
+                    currTag.style.borderColor = 'var(--status-err)';
+                    currTag.style.color = 'var(--status-err)';
+                    currTag.style.background = '#281010';
+                    currTag.textContent = '🔥 FALLA: SOBRECORRIENTE';
+                } else {
+                    currTag.className = 'status-tag connected';
+                    currTag.style.borderColor = 'var(--status-ok)';
+                    currTag.style.color = 'var(--status-ok)';
+                    currTag.style.background = '#112013';
+                    currTag.textContent = 'CARGA: NORMAL [OK]';
+                }
+            }
+        }
+
+        function setLamp(id, active) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (active) {
+                el.classList.add('active');
+            } else {
+                el.classList.remove('active');
+            }
+        }
+
+        function getLightsText(mask) {
+            let p = [];
+            if (mask & LIGHT_RED) p.push('ROJO');
+            if (mask & LIGHT_YELLOW) p.push('AMARILLO');
+            if (mask & LIGHT_GREEN) p.push('VERDE');
+            if (mask & LIGHT_PEDESTRIAN) p.push('PEAT');
+            return p.length > 0 ? p.join(' + ') : 'APAGADO';
+        }
+
+        // ==========================================
+        // COMUNICACIÓN WEB SERIAL
+        // ==========================================
+        async function toggleConnection() {
+            if (isConnected) {
+                disconnectSerial();
+                return;
+            }
+
+            if (!("serial" in navigator)) {
+                alert("Navegador no compatible con Web Serial API. Use Chromium / Chrome / Edge o active el Modo Simulación.");
+                return;
+            }
+
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: BAUDRATE });
+
+                isConnected = true;
+                if (isSimulating) stopSimulation();
+
+                document.getElementById('statusBadge').className = 'status-tag connected';
+                document.getElementById('statusText').textContent = 'CONECTADO (115200)';
+                document.getElementById('btnConnect').textContent = 'DESCONECTAR';
+                document.getElementById('btnConnect').className = 'btn-danger';
+
+                logConsole('INFO', `PUERTO SERIE ABIERTO @ ${BAUDRATE} BAUD.`);
+                startSerialReader();
+                startPolling();
+            } catch (err) {
+                logConsole('ERR', `FALLA AL ABRIR PUERTO: ${err.message}`);
+                disconnectSerial();
+            }
+        }
+
+        async function disconnectSerial() {
+            isConnected = false;
+            stopPolling();
+
+            if (reader) {
+                try {
+                    await reader.cancel();
+                    reader.releaseLock();
+                } catch(e) {}
+                reader = null;
+            }
+
+            if (writer) {
+                try {
+                    writer.releaseLock();
+                } catch(e) {}
+                writer = null;
+            }
+
+            if (port) {
+                try {
+                    await port.close();
+                } catch(e) {}
+                port = null;
+            }
+
+            document.getElementById('statusBadge').className = 'status-tag';
+            document.getElementById('statusText').textContent = 'DESCONECTADO';
+            document.getElementById('btnConnect').className = '';
+            document.getElementById('btnConnect').textContent = 'CONECTAR PUERTO SERIE';
+
+            logConsole('INFO', 'PUERTO SERIE CERRADO.');
+        }
+
+        let rxBuffer = [];
+
+        async function startSerialReader() {
+            try {
+                while (port && port.readable && isConnected) {
+                    reader = port.readable.getReader();
+                    try {
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+                            if (value) {
+                                for (let i = 0; i < value.length; i++) rxBuffer.push(value[i]);
+                                processIncomingBytes();
+                            }
+                        }
+                    } catch (readErr) {
+                        logConsole('ERR', `ERROR RX: ${readErr.message}`);
+                    } finally {
+                        reader.releaseLock();
+                    }
+                }
+            } catch (err) {
+                logConsole('ERR', `FALLA READER: ${err.message}`);
+            }
+        }
+
+        function processIncomingBytes() {
+            while (rxBuffer.length >= 5) {
+                if (rxBuffer[0] !== SLAVE_ID) {
+                    rxBuffer.shift();
+                    continue;
+                }
+
+                const fn = rxBuffer[1];
+
+                // 0x03 LECTURA HOLDING REGISTERS
+                if (fn === 0x03) {
+                    const byteCount = rxBuffer[2];
+                    const expectedLen = 3 + byteCount + 2;
+
+                    if (rxBuffer.length < expectedLen) break;
+
+                    const frame = rxBuffer.slice(0, expectedLen);
+                    const calcCrc = calculateCRC(frame, expectedLen - 2);
+                    const rxCrc = frame[expectedLen - 2] | (frame[expectedLen - 1] << 8);
+
+                    if (calcCrc === rxCrc) {
+                        logConsole('RX', `0x03 REGISTROS OK: ${hexString(frame)}`);
+                        const regWords = byteCount / 2;
+                        for (let i = 0; i < regWords && i < REG_COUNT; i++) {
+                            const hi = frame[3 + i * 2];
+                            const lo = frame[4 + i * 2];
+                            currentRegisters[i] = (hi << 8) | lo;
+                        }
+                        updateUI();
+                        rxBuffer.splice(0, expectedLen);
+                        continue;
+                    } else {
+                        logConsole('ERR', `CRC FALLÓ EN RESPUESTA 0x03`);
+                        rxBuffer.shift();
+                        continue;
+                    }
+                }
+
+                // 0x06 ESCRITURA SINGLE REGISTER
+                if (fn === 0x06) {
+                    if (rxBuffer.length < 8) break;
+
+                    const frame = rxBuffer.slice(0, 8);
+                    const calcCrc = calculateCRC(frame, 6);
+                    const rxCrc = frame[6] | (frame[7] << 8);
+
+                    if (calcCrc === rxCrc) {
+                        const reg = (frame[2] << 8) | frame[3];
+                        const val = (frame[4] << 8) | frame[5];
+                        logConsole('RX', `0x06 ECO OK: REG[${reg}] = ${val}`);
+                        if (reg < REG_COUNT) currentRegisters[reg] = val;
+                        updateUI();
+                        rxBuffer.splice(0, 8);
+                        continue;
+                    } else {
+                        logConsole('ERR', `CRC FALLÓ EN RESPUESTA 0x06`);
+                        rxBuffer.shift();
+                        continue;
+                    }
+                }
+
+                rxBuffer.shift();
+            }
+        }
+
+        async function sendModbusFrame(frame) {
+            if (!isConnected || !port || !port.writable) return;
+            try {
+                writer = port.writable.getWriter();
+                await writer.write(frame);
+                writer.releaseLock();
+                writer = null;
+            } catch (err) {
+                logConsole('ERR', `ERROR TX: ${err.message}`);
+                if (writer) {
+                    try { writer.releaseLock(); } catch(e) {}
+                    writer = null;
+                }
+            }
+        }
+
+        function startPolling() {
+            stopPolling();
+            pollingInterval = setInterval(async () => {
+                if (!isConnected) return;
+                const req = buildReadHoldingRegistersFrame(SLAVE_ID, 0, REG_COUNT);
+                logConsole('TX', `0x03 LECTURA [0..${REG_COUNT - 1}]: ${hexString(req)}`);
+                await sendModbusFrame(req);
+            }, 800);
+        }
+
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+        }
+
+        // ==========================================
+        // COMANDOS DE ESCRITURA
+        // ==========================================
+        async function setOpMode(modeValue) {
+            logConsole('INFO', `COMANDO MODO DE OPERACIÓN: ${modeValue}`);
+            if (isConnected) {
+                const frame = buildWriteSingleRegisterFrame(SLAVE_ID, REG.OP_MODE, modeValue);
+                logConsole('TX', `0x06 REG_OP_MODE = ${modeValue}: ${hexString(frame)}`);
+                await sendModbusFrame(frame);
+            } else if (isSimulating) {
+                currentRegisters[REG.OP_MODE] = modeValue;
+                updateUI();
+            } else {
+                alert("CONECTE EL MICROCONTROLADOR O ACTIVE MODO SIMULACIÓN.");
+            }
+        }
+
+        async function writeLdrThreshold() {
+            const input = document.getElementById('inputLdrThreshold');
+            const val = parseInt(input.value, 10);
+            if (isNaN(val) || val < 100 || val > 3200) {
+                alert("EL UMBRAL DEBE ESTAR ENTRE 100 mV Y 3200 mV.");
+                return;
+            }
+
+            logConsole('INFO', `COMANDO ESCRITURA UMBRAL LDR: ${val} mV (REG ${REG.LDR_THRESHOLD_MV})`);
+            if (isConnected) {
+                const frame = buildWriteSingleRegisterFrame(SLAVE_ID, REG.LDR_THRESHOLD_MV, val);
+                logConsole('TX', `0x06 REG_LDR_THRESHOLD_MV = ${val}: ${hexString(frame)}`);
+                await sendModbusFrame(frame);
+            } else if (isSimulating) {
+                currentRegisters[REG.LDR_THRESHOLD_MV] = val;
+                logConsole('INFO', `SIMULACIÓN: UMBRAL GUARDADO EN ${val} mV.`);
+                updateUI();
+            } else {
+                alert("CONECTE EL MICROCONTROLADOR O ACTIVE MODO SIMULACIÓN.");
+            }
+        }
+
+        function setThresholdPreset(mv) {
+            document.getElementById('inputLdrThreshold').value = mv;
+            writeLdrThreshold();
+        }
+
+        function simSetLdrVoltage(mv) {
+            if (!isSimulating) {
+                startSimulation();
+            }
+            currentRegisters[REG.LDR_MV] = mv;
+            document.getElementById('simLdrSlider').value = mv;
+            document.getElementById('simLdrSliderVal').textContent = `${mv} mV`;
+            logConsole('INFO', `SIMULACIÓN LDR: TENSIÓN FORZADA A ${mv} mV`);
+            updateUI();
+        }
+
+        function simOnSliderChange(val) {
+            const mv = parseInt(val, 10);
+            document.getElementById('simLdrSliderVal').textContent = `${mv} mV`;
+            currentRegisters[REG.LDR_MV] = mv;
+            if (isSimulating || !isConnected) {
+                updateUI();
+            }
+        }
+
+        // ==========================================
+        // CALIBRACIÓN Y CONTROL DE CORRIENTE (PB1)
+        // ==========================================
+        async function writeLampCurrent() {
+            const input = document.getElementById('inputLampCurrent');
+            const val = parseInt(input.value, 10);
+            if (isNaN(val) || val < 50 || val > 1000) {
+                alert("LA CORRIENTE NOMINAL DEBE ESTAR ENTRE 50 mA Y 1000 mA.");
+                return;
+            }
+
+            logConsole('INFO', `COMANDO CORRIENTE LÁMPARA: ${val} mA (REG ${REG.LAMP_CURRENT_MA})`);
+            if (isConnected) {
+                const frame = buildWriteSingleRegisterFrame(SLAVE_ID, REG.LAMP_CURRENT_MA, val);
+                logConsole('TX', `0x06 REG_LAMP_CURRENT_MA = ${val}: ${hexString(frame)}`);
+                await sendModbusFrame(frame);
+            } else if (isSimulating) {
+                currentRegisters[REG.LAMP_CURRENT_MA] = val;
+                logConsole('INFO', `SIMULACIÓN: CORRIENTE NOMINAL GUARDADA EN ${val} mA.`);
+                updateUI();
+            } else {
+                alert("CONECTE EL MICROCONTROLADOR O ACTIVE MODO SIMULACIÓN.");
+            }
+        }
+
+        async function writeCurrentTolerance() {
+            const input = document.getElementById('inputCurrentTol');
+            const val = parseInt(input.value, 10);
+            if (isNaN(val) || val < 5 || val > 80) {
+                alert("LA TOLERANCIA DEBE ESTAR ENTRE 5% Y 80%.");
+                return;
+            }
+
+            logConsole('INFO', `COMANDO TOLERANCIA CORRIENTE: ${val}% (REG ${REG.CURRENT_TOL_PCT})`);
+            if (isConnected) {
+                const frame = buildWriteSingleRegisterFrame(SLAVE_ID, REG.CURRENT_TOL_PCT, val);
+                logConsole('TX', `0x06 REG_CURRENT_TOL_PCT = ${val}: ${hexString(frame)}`);
+                await sendModbusFrame(frame);
+            } else if (isSimulating) {
+                currentRegisters[REG.CURRENT_TOL_PCT] = val;
+                logConsole('INFO', `SIMULACIÓN: TOLERANCIA GUARDADA EN ${val}%.`);
+                updateUI();
+            } else {
+                alert("CONECTE EL MICROCONTROLADOR O ACTIVE MODO SIMULACIÓN.");
+            }
+        }
+
+        async function setCurrentPreset(lampMa, tolPct) {
+            document.getElementById('inputLampCurrent').value = lampMa;
+            document.getElementById('inputCurrentTol').value = tolPct;
+            await writeLampCurrent();
+            await new Promise(r => setTimeout(r, 80));
+            await writeCurrentTolerance();
+        }
+
+        function simOnCurrSliderChange(val) {
+            const ma = parseInt(val, 10);
+            document.getElementById('simCurrSliderVal').textContent = `${ma} mA`;
+            currentRegisters[REG.CURRENT_MA] = ma;
+            simFollowExpected = false;
+            evalSimFaults();
+            updateUI();
+        }
+
+        function simInjectFault(type) {
+            if (!isSimulating && !isConnected) {
+                startSimulation();
+            }
+            const expected = currentRegisters[REG.EXPECTED_CURR_MA] || 400;
+            const tol = currentRegisters[REG.CURRENT_TOL_PCT] || 35;
+            const iMin = Math.round(expected * (100 - tol) / 100);
+            const iMax = Math.round(expected * (100 + tol) / 100);
+
+            let target = expected;
+            if (type === 'normal') {
+                target = expected;
+                simFollowExpected = true;
+            } else if (type === 'burned') {
+                target = Math.max(0, Math.round(iMin * 0.5));
+                simFollowExpected = false;
+            } else if (type === 'overcurrent') {
+                target = Math.min(1200, Math.round(iMax * 1.35) + 50);
+                simFollowExpected = false;
+            }
+
+            const slider = document.getElementById('simCurrSlider');
+            if (slider) slider.value = target;
+            const sliderVal = document.getElementById('simCurrSliderVal');
+            if (sliderVal) sliderVal.textContent = `${target} mA`;
+
+            currentRegisters[REG.CURRENT_MA] = target;
+            evalSimFaults();
+            logConsole('INFO', `SIMULACIÓN CORRIENTE PB1 FORZADA A ${target} mA (${type.toUpperCase()})`);
+            updateUI();
+        }
+
+        function evalSimFaults() {
+            const measured = currentRegisters[REG.CURRENT_MA];
+            const expected = currentRegisters[REG.EXPECTED_CURR_MA];
+            const tol = currentRegisters[REG.CURRENT_TOL_PCT] || 35;
+            const iMin = Math.round(expected * (100 - tol) / 100);
+            const iMax = Math.round(expected * (100 + tol) / 100);
+
+            let faults = currentRegisters[REG.FAULT_FLAGS] & FAULT_BATTERY_LOW;
+            if (expected > 0) {
+                if (measured < iMin) {
+                    faults |= FAULT_LAMP_BURNED;
+                } else if (measured > iMax) {
+                    faults |= FAULT_OVERCURRENT;
+                }
+            } else {
+                if (measured > 50) {
+                    faults |= FAULT_LAMP_BURNED;
+                }
+            }
+            currentRegisters[REG.FAULT_FLAGS] = faults;
+        }
+
+        async function writeSingleTime(regIndex, inputId) {
+            const input = document.getElementById(inputId);
+            const val = parseInt(input.value, 10);
+            if (isNaN(val) || val < 1 || val > 255) {
+                alert("VALOR FUERA DE RANGO (1 A 255 SEG).");
+                return;
+            }
+
+            if (isConnected) {
+                const frame = buildWriteSingleRegisterFrame(SLAVE_ID, regIndex, val);
+                logConsole('TX', `0x06 ESCRIBIR REG[${regIndex}] = ${val}: ${hexString(frame)}`);
+                await sendModbusFrame(frame);
+            } else if (isSimulating) {
+                currentRegisters[regIndex] = val;
+                logConsole('INFO', `SIMULACIÓN: REG[${regIndex}] = ${val} GUARDADO.`);
+                updateUI();
+            } else {
+                alert("CONECTE EL MICROCONTROLADOR O ACTIVE MODO SIMULACIÓN.");
+            }
+        }
+
+        async function writeAllTimes() {
+            const times = [
+                parseInt(document.getElementById('time_int1').value, 10),
+                parseInt(document.getElementById('time_int2').value, 10),
+                parseInt(document.getElementById('time_int3').value, 10),
+                parseInt(document.getElementById('time_int4').value, 10),
+                parseInt(document.getElementById('time_int5').value, 10),
+                parseInt(document.getElementById('time_int6').value, 10),
+            ];
+
+            for (let i = 0; i < 6; i++) {
+                if (isConnected) {
+                    const frame = buildWriteSingleRegisterFrame(SLAVE_ID, i, times[i]);
+                    logConsole('TX', `0x06 REG[${i}] = ${times[i]}s`);
+                    await sendModbusFrame(frame);
+                    await new Promise(r => setTimeout(r, 60));
+                } else if (isSimulating) {
+                    currentRegisters[i] = times[i];
+                }
+            }
+
+            if (isSimulating) updateUI();
+            logConsole('INFO', 'CONFIGURACIÓN DE INTERVALOS COMPLETADA.');
+        }
+
+        function applyPreset(type) {
+            if (type === 'normal') {
+                document.getElementById('time_int1').value = 25;
+                document.getElementById('time_int2').value = 3;
+                document.getElementById('time_int3').value = 2;
+                document.getElementById('time_int4').value = 25;
+                document.getElementById('time_int5').value = 3;
+                document.getElementById('time_int6').value = 2;
+            } else if (type === 'peak') {
+                document.getElementById('time_int1').value = 45;
+                document.getElementById('time_int2').value = 4;
+                document.getElementById('time_int3').value = 3;
+                document.getElementById('time_int4').value = 20;
+                document.getElementById('time_int5').value = 3;
+                document.getElementById('time_int6').value = 3;
+            } else if (type === 'fast') {
+                document.getElementById('time_int1').value = 4;
+                document.getElementById('time_int2').value = 2;
+                document.getElementById('time_int3').value = 1;
+                document.getElementById('time_int4').value = 4;
+                document.getElementById('time_int5').value = 2;
+                document.getElementById('time_int6').value = 1;
+            }
+        }
+
+        // ==========================================
+        // MODO SIMULACIÓN INTERNO
+        // ==========================================
+        function toggleSimulation() {
+            if (isSimulating) {
+                stopSimulation();
+            } else {
+                startSimulation();
+            }
+        }
+
+        function startSimulation() {
+            if (isConnected) disconnectSerial();
+            isSimulating = true;
+            document.getElementById('statusBadge').className = 'status-tag simulated';
+            document.getElementById('statusText').textContent = 'SIMULACIÓN ACTIVA';
+            document.getElementById('btnSimulate').textContent = 'PARAR SIMULACIÓN';
+            logConsole('INFO', 'INICIANDO EMULADOR FSM EN NAVEGADOR...');
+
+            simState = 0;
+            simCycleTimer = 0;
+
+            simInterval = setInterval(() => {
+                const mode = currentRegisters[REG.OP_MODE];
+                const ldrMv = currentRegisters[REG.LDR_MV];
+                const threshMv = currentRegisters[REG.LDR_THRESHOLD_MV] || 2000;
+                const isNight = (ldrMv >= threshMv);
+
+                if (isNight) {
+                    currentRegisters[REG.INPUTS_DIGITAL] |= INPUT_LDR_NIGHT;
+                } else {
+                    currentRegisters[REG.INPUTS_DIGITAL] &= ~INPUT_LDR_NIGHT;
+                }
+
+                if (mode === 1 || (mode === 3 && isNight)) {
+                    currentRegisters[REG.FSM_STATE] = 99;
+                    if (Math.floor(Date.now() / 500) % 2 === 0) {
+                        currentRegisters[REG.LIGHTS_NS] = LIGHT_YELLOW;
+                        currentRegisters[REG.LIGHTS_EO] = LIGHT_YELLOW;
+                    } else {
+                        currentRegisters[REG.LIGHTS_NS] = 0;
+                        currentRegisters[REG.LIGHTS_EO] = 0;
+                    }
+                } else if (mode === 2) {
+                    currentRegisters[REG.FSM_STATE] = 98;
+                    currentRegisters[REG.LIGHTS_NS] = LIGHT_RED;
+                    currentRegisters[REG.LIGHTS_EO] = LIGHT_RED;
+                } else {
+                    simCycleTimer++;
+                    let duration = currentRegisters[simState];
+                    if (!duration || duration <= 0) duration = 1;
+
+                    switch(simState) {
+                        case 0:
+                            currentRegisters[REG.LIGHTS_NS] = LIGHT_GREEN | LIGHT_PEDESTRIAN;
+                            currentRegisters[REG.LIGHTS_EO] = LIGHT_RED;
+                            break;
+                        case 1:
+                            currentRegisters[REG.LIGHTS_NS] = LIGHT_YELLOW;
+                            currentRegisters[REG.LIGHTS_EO] = LIGHT_RED;
+                            break;
+                        case 2:
+                            currentRegisters[REG.LIGHTS_NS] = LIGHT_RED;
+                            currentRegisters[REG.LIGHTS_EO] = LIGHT_RED;
+                            break;
+                        case 3:
+                            currentRegisters[REG.LIGHTS_NS] = LIGHT_RED;
+                            currentRegisters[REG.LIGHTS_EO] = LIGHT_GREEN | LIGHT_PEDESTRIAN;
+                            break;
+                        case 4:
+                            currentRegisters[REG.LIGHTS_NS] = LIGHT_RED;
+                            currentRegisters[REG.LIGHTS_EO] = LIGHT_YELLOW;
+                            break;
+                        case 5:
+                            currentRegisters[REG.LIGHTS_NS] = LIGHT_RED;
+                            currentRegisters[REG.LIGHTS_EO] = LIGHT_RED;
+                            break;
+                    }
+
+                    currentRegisters[REG.FSM_STATE] = simState;
+
+                    if (simCycleTimer >= duration) {
+                        simCycleTimer = 0;
+                        simState = (simState + 1) % 6;
+                    }
+                }
+
+                let activeCount = 0;
+                if (currentRegisters[REG.FSM_STATE] === 99) {
+                    activeCount = 2; // 2 lámparas amarillas en intermitente
+                } else {
+                    for (let b = 0; b < 4; b++) {
+                        if (currentRegisters[REG.LIGHTS_NS] & (1 << b)) activeCount++;
+                        if (currentRegisters[REG.LIGHTS_EO] & (1 << b)) activeCount++;
+                    }
+                }
+
+                const lampNom = currentRegisters[REG.LAMP_CURRENT_MA] || 200;
+                const expectedMa = activeCount * lampNom;
+                currentRegisters[REG.EXPECTED_CURR_MA] = expectedMa;
+
+                if (simFollowExpected) {
+                    currentRegisters[REG.CURRENT_MA] = expectedMa;
+                    const slider = document.getElementById('simCurrSlider');
+                    if (slider) slider.value = expectedMa;
+                    const sliderVal = document.getElementById('simCurrSliderVal');
+                    if (sliderVal) sliderVal.textContent = `${expectedMa} mA`;
+                }
+
+                evalSimFaults();
+                currentRegisters[REG.BATTERY_MV] = 12600;
+
+                updateUI();
+            }, 200);
+        }
+
+        function stopSimulation() {
+            isSimulating = false;
+            if (simInterval) {
+                clearInterval(simInterval);
+                simInterval = null;
+            }
+            document.getElementById('statusBadge').className = 'status-tag';
+            document.getElementById('statusText').textContent = 'DESCONECTADO';
+            document.getElementById('btnSimulate').textContent = 'MODO SIMULACIÓN';
+            logConsole('INFO', 'SIMULACIÓN DETENIDA.');
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            updateUI();
+            // Refresco a 100ms para asegurar animación fluida e inmediata de destello (1 Hz) en Estado 99
+            setInterval(updateUI, 100);
+            logConsole('INFO', 'TERMINAL SCADA INICIALIZADA.');
+        });
+    </script>
+</body>
+</html>
