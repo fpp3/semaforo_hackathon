@@ -1,0 +1,24 @@
+prompt 1:
+tengo que realizar el código para una central de semaforos local (o esclavo),
+que puede ser comandada por una central maestro. El sistema de software para
+esta central local tiene que ser escrita con FreeRTOS. Esta central será una
+central base que controla dos fases (dos intersecciones, dos semaforos).  Quiero
+empezar definiendo las tareas esenciales que tendrá nuestro código para cumplir
+con los requerimientos que se encuentran en @[central_semaforo.pdf] y
+@[requerimientos_diseño.pdf]. Antes de escribir código, definamos qué tareas
+tendremos
+
+prompt 2:
+lo dejemos en 3 tareas, simples. vStateMachineTask, vReadInputsTask,
+vSerialCommTask. Habrá un vector global que almacene la informacion que requiera
+las 3 tareas. Serán los registros del ModBus, que será el protocolo utilizado
+entre el maestro y el esclavo. En este vector, se almacenará el estado actual de
+los dos semaforos (el estado actual de la FMS). Las mediciones de los sensores
+(o entradas en general) del sistema, los cuales pueden ser consultados por el
+master y la misma central local, cuando se requiera. Y los invervalos de tiempo
+entre estados pueden ser modificados por el maestro en cualquier momento (según
+el momento del dia o el trafico). Estos invervalos de tiempo tambien se
+almacenan en este vector global. Pero hay intervalos default que son los que
+están en la pagina 9 del archivo @[central_semaforo.pdf]. Arrancá a escribir las
+tareas. Hacelas lo más básicas y simples posibles, luego las vamos trabjando con
+mayor detalle si es necesario.

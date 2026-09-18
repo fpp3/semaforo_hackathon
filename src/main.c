@@ -3,13 +3,15 @@
 #include "stm32f1xx.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include "queue.h"
 #include "modbus_registers.h"
 
 #define MODBUS_SLAVE_ID     1     // Dirección de este esclavo Modbus
 #define RX_BUFFER_SIZE      64    // Buffer de recepción serie
 
-// VECTOR GLOBAL DE REGISTROS MODBUS
-// Compartido entre vStateMachineTask, vReadInputsTask y vSerialCommTask
+// Cola de recepción de bytes por interrupción
+static QueueHandle_t xUartRxQueue = NULL;
+
 volatile uint16_t g_modbus_registers[REG_TOTAL_COUNT] = {
     [REG_TIME_INT1]      = 25,     // 25s - NS: Verde,    EO: Rojo
     [REG_TIME_INT2]      = 3,      //  3s - NS: Amarillo, EO: Rojo
@@ -17,14 +19,15 @@ volatile uint16_t g_modbus_registers[REG_TOTAL_COUNT] = {
     [REG_TIME_INT4]      = 25,     // 25s - NS: Rojo,     EO: Verde
     [REG_TIME_INT5]      = 3,      //  3s - NS: Rojo,     EO: Amarillo
     [REG_TIME_INT6]      = 2,      //  2s - NS: Rojo,     EO: Rojo (Despeje / Todo Rojo)
+    [REG_TIME_INT7]      = 0,      //  0s - NS: Amarillo, EO: Amarillo (Intermitente ON)
+    [REG_TIME_INT8]      = 0,      //  0s - NS: Off,      EO: Off      (Intermitente OFF)
     [REG_FSM_STATE]      = 0,      // Estado inicial FSM
     [REG_LIGHTS_NS]      = 0,      // Apagado al inicio (se actualizará en arranque)
     [REG_LIGHTS_EO]      = 0,
     [REG_BATTERY_MV]     = 12600,  // 12.6V nominal inicial
     [REG_CURRENT_MA]     = 0,      // Corriente inicial
     [REG_INPUTS_DIGITAL] = INPUT_MAINS_220V, // Red 220V presente
-    [REG_FAULT_FLAGS]    = 0,
-    [REG_OP_MODE]        = 0       // 0: Modo Normal / FSM
+    [REG_FAULT_FLAGS]    = 0
 };
 
 void vHardwareInit(void);
@@ -42,6 +45,12 @@ int main(void) {
     SystemCoreClockUpdate();
     vHardwareInit();
 
+    // Crear cola para recepción serie por interrupción
+    xUartRxQueue = xQueueCreate(RX_BUFFER_SIZE, sizeof(uint8_t));
+    if (xUartRxQueue == NULL) {
+        while (1); // Error al reservar memoria para la cola
+    }
+
     xTaskCreate(vStateMachineTask, "StateMachine", 256, NULL, 3, NULL);
 
     xTaskCreate(vReadInputsTask,   "ReadInputs",   192, NULL, 2, NULL);
@@ -58,43 +67,16 @@ int main(void) {
 void vStateMachineTask(void *pvParameters) {
     (void)pvParameters;
     uint8_t currentState = 0;
+    uint8_t zeroCount = 0;
 
     // Arranque seguro: Todo Rojo durante los primeros 2 segundos
-    g_modbus_registers[REG_FSM_STATE] = 98; // 98 = Todo Rojo inicio
+    g_modbus_registers[REG_FSM_STATE] = 2; // Estado 2 = Todo Rojo (Despeje)
     g_modbus_registers[REG_LIGHTS_NS] = LIGHT_RED;
     g_modbus_registers[REG_LIGHTS_EO] = LIGHT_RED;
     vHardwareSetLights(LIGHT_RED, LIGHT_RED);
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     while (1) {
-        uint16_t mode = g_modbus_registers[REG_OP_MODE];
-
-        /* --- MODO INTERMITENTE (AMARILLO DESTELLANTE) --- */
-        if (mode == 1) {
-            g_modbus_registers[REG_FSM_STATE] = 99;
-            g_modbus_registers[REG_LIGHTS_NS] = LIGHT_YELLOW;
-            g_modbus_registers[REG_LIGHTS_EO] = LIGHT_YELLOW;
-            vHardwareSetLights(LIGHT_YELLOW, LIGHT_YELLOW);
-            vTaskDelay(pdMS_TO_TICKS(500));
-
-            g_modbus_registers[REG_LIGHTS_NS] = 0;
-            g_modbus_registers[REG_LIGHTS_EO] = 0;
-            vHardwareSetLights(0, 0);
-            vTaskDelay(pdMS_TO_TICKS(500));
-            continue;
-        }
-
-        /* --- MODO TODO ROJO FORZADO --- */
-        if (mode == 2) {
-            g_modbus_registers[REG_FSM_STATE] = 98;
-            g_modbus_registers[REG_LIGHTS_NS] = LIGHT_RED;
-            g_modbus_registers[REG_LIGHTS_EO] = LIGHT_RED;
-            vHardwareSetLights(LIGHT_RED, LIGHT_RED);
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
-
-        /* --- MODO NORMAL: FSM DE 6 INTERVALOS (Pág 9 central_semaforo.pdf) --- */
         uint16_t duration_sec = 0;
         uint16_t lights_ns = 0;
         uint16_t lights_eo = 0;
@@ -136,53 +118,65 @@ void vStateMachineTask(void *pvParameters) {
                 lights_eo    = LIGHT_RED;
                 break;
 
+            case 6: // Intervalo 7: NS Amarillo, EO Amarillo (Intermitente ON)
+                duration_sec = g_modbus_registers[REG_TIME_INT7];
+                lights_ns    = LIGHT_YELLOW;
+                lights_eo    = LIGHT_YELLOW;
+                break;
+
+            case 7: // Intervalo 8: NS Off, EO Off (Intermitente OFF)
+                duration_sec = g_modbus_registers[REG_TIME_INT8];
+                lights_ns    = 0;
+                lights_eo    = 0;
+                break;
+
             default:
                 currentState = 0;
                 continue;
         }
 
-        // Seguridad: garantizar duración mínima de 1 segundo
-        if (duration_sec == 0) duration_sec = 1;
+        // Si la duración es mayor a 0, ejecuta el estado
+        if (duration_sec > 0) {
+            zeroCount = 0;
 
-        // Actualizar registros Modbus del estado actual y lámparas
-        g_modbus_registers[REG_FSM_STATE] = currentState;
-        g_modbus_registers[REG_LIGHTS_NS] = lights_ns;
-        g_modbus_registers[REG_LIGHTS_EO] = lights_eo;
+            // Actualizar registros Modbus del estado actual y lámparas
+            g_modbus_registers[REG_FSM_STATE] = currentState;
+            g_modbus_registers[REG_LIGHTS_NS] = lights_ns;
+            g_modbus_registers[REG_LIGHTS_EO] = lights_eo;
 
-        // Actuar sobre el hardware físico
-        vHardwareSetLights(lights_ns, lights_eo);
+            // Actuar sobre el hardware físico
+            vHardwareSetLights(lights_ns, lights_eo);
 
-        // Esperar el tiempo configurado para este intervalo (en segundos)
-        // Se ejecuta en pasos de 1 segundo para responder a cambios de modo del maestro
-        for (uint16_t s = 0; s < duration_sec; s++) {
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            // Si el maestro cambia el modo de operación, interrumpir ciclo inmediatamente
-            if (g_modbus_registers[REG_OP_MODE] != 0) {
-                break;
+            // Esperar la duración del intervalo en segundos
+            for (uint16_t s = 0; s < duration_sec; s++) {
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                // Si el maestro pone en 0 el tiempo del estado actual en caliente, salir
+                if (g_modbus_registers[currentState] == 0) {
+                    break;
+                }
+            }
+        } else {
+            // Si todos los estados estuvieran en 0, ceder CPU para evitar bucle activo
+            zeroCount++;
+            if (zeroCount >= 8) {
+                vTaskDelay(pdMS_TO_TICKS(50));
+                zeroCount = 0;
             }
         }
 
-        // Avanzar al siguiente estado
-        currentState = (currentState + 1) % 6;
+        // Avanzar cíclicamente al siguiente de los 8 estados
+        currentState = (currentState + 1) % 8;
     }
 }
 
-/* ========================================================================= */
-/* TAREA 2: vReadInputsTask                                                  */
-/* Lee entradas digitales/analógicas y actualiza el vector Modbus            */
-/* ========================================================================= */
+//Lee entradas digitales/analógicas y actualiza el vector Modbus
 void vReadInputsTask(void *pvParameters) {
     (void)pvParameters;
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
     while (1) {
-        // 1. Leer entrada digital de pulsador peatonal (PA0 con pull-up)
+        // 1. Entradas digitales del sistema (Red 220V)
         uint16_t inputs = 0;
-        if ((GPIOA->IDR & GPIO_IDR_IDR0) == 0) {
-            inputs |= INPUT_BUTTON_NS; // Botón presionado (activo bajo)
-        }
-
-        // Simulación de presencia de red 220V (por defecto activa)
         inputs |= INPUT_MAINS_220V;
         g_modbus_registers[REG_INPUTS_DIGITAL] = inputs;
 
@@ -221,53 +215,39 @@ void vReadInputsTask(void *pvParameters) {
     }
 }
 
-/* ========================================================================= */
-/* TAREA 3: vSerialCommTask                                                  */
-/* Atiende peticiones Modbus RTU (Funciones 0x03 y 0x06) desde el Maestro    */
-/* ========================================================================= */
+// Atiende peticiones Modbus RTU (Funciones 0x03 y 0x06) desde el Maestro
 void vSerialCommTask(void *pvParameters) {
     (void)pvParameters;
     uint8_t rxBuffer[RX_BUFFER_SIZE];
     uint16_t rxIndex = 0;
+    uint8_t byte;
 
     while (1) {
-        // Leer bytes disponibles de USART1 (no bloqueante para el planificador)
-        while ((USART1->SR & USART_SR_RXNE) != 0) {
-            uint8_t byte = (uint8_t)(USART1->DR & 0xFF);
+        // Si el buffer está vacío, se bloquea indefinidamente hasta recibir el 1er byte (0% CPU).
+        // Si ya hay datos en curso, se espera hasta 5 ms (silencio t3.5 fin de trama Modbus RTU).
+        TickType_t xWaitTime = (rxIndex == 0) ? portMAX_DELAY : pdMS_TO_TICKS(5);
+
+        if (xQueueReceive(xUartRxQueue, &byte, xWaitTime) == pdPASS) {
             if (rxIndex < RX_BUFFER_SIZE) {
                 rxBuffer[rxIndex++] = byte;
             }
-        }
+        } else {
+            // El timeout de 5 ms venció: fin de trama detectado por silencio de la línea
+            if (rxIndex >= 8) {
+                uint16_t calculatedCRC = usModbusCRC(rxBuffer, rxIndex - 2);
+                uint16_t receivedCRC   = rxBuffer[rxIndex - 2] | (rxBuffer[rxIndex - 1] << 8);
 
-        // Si se recibieron bytes, esperar pequeña pausa entre caracteres (silencio Modbus t3.5)
-        if (rxIndex >= 8) {
-            // Verificar CRC y procesar trama Modbus RTU
-            uint16_t calculatedCRC = usModbusCRC(rxBuffer, rxIndex - 2);
-            uint16_t receivedCRC   = rxBuffer[rxIndex - 2] | (rxBuffer[rxIndex - 1] << 8);
-
-            if (calculatedCRC == receivedCRC && rxBuffer[0] == MODBUS_SLAVE_ID) {
-                vModbusProcessFrame(rxBuffer, rxIndex);
-            }
-            rxIndex = 0; // Reiniciar buffer tras procesar
-        } else if (rxIndex > 0) {
-            // Espera breve para dar tiempo a que lleguen los bytes restantes de la trama
-            vTaskDelay(pdMS_TO_TICKS(5));
-            if ((USART1->SR & USART_SR_RXNE) == 0) {
-                // Si venció el tiempo y no llegó una trama completa, descartar
-                if (rxIndex < 8) {
-                    rxIndex = 0;
+                if (calculatedCRC == receivedCRC && rxBuffer[0] == MODBUS_SLAVE_ID) {
+                    vModbusProcessFrame(rxBuffer, rxIndex);
                 }
             }
+            // Reiniciar índice para esperar la siguiente trama
+            rxIndex = 0;
         }
-
-        // Tarea duerme 10 ms para ceder CPU si no hay datos entrantes
-        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
-/* ========================================================================= */
-/* PROCESADOR DE TRAMAS MODBUS RTU (0x03: Leer, 0x06: Escribir)             */
-/* ========================================================================= */
+// PROCESADOR DE TRAMAS MODBUS RTU (0x03: Leer, 0x06: Escribir)
 void vModbusProcessFrame(const uint8_t *rxBuf, uint16_t len) {
     (void)len;
     uint8_t functionCode = rxBuf[1];
@@ -316,9 +296,7 @@ void vModbusProcessFrame(const uint8_t *rxBuf, uint16_t len) {
     }
 }
 
-/* ========================================================================= */
-/* CÁLCULO DE CRC16 MODBUS (Polinomio 0xA001)                                */
-/* ========================================================================= */
+// CÁLCULO DE CRC16 MODBUS (Polinomio 0xA001)
 uint16_t usModbusCRC(const uint8_t *pucFrame, uint16_t usLen) {
     uint16_t usCRC = 0xFFFF;
     while (usLen--) {
@@ -334,58 +312,80 @@ uint16_t usModbusCRC(const uint8_t *pucFrame, uint16_t usLen) {
     return usCRC;
 }
 
-/* ========================================================================= */
-/* CONTROL DE HARDWARE Y GPIO                                                */
-/* ========================================================================= */
+// CONTROL DE HARDWARE Y GPIO
 void vHardwareInit(void) {
-    // 1. Habilitar Clocks de periféricos: GPIOA, GPIOB, GPIOC, USART1
-    RCC->APB2ENR |= RCC_APB2ENR_IOPAEN | RCC_APB2ENR_IOPBEN | 
-                    RCC_APB2ENR_IOPCEN | RCC_APB2ENR_USART1EN;
+    // 1. Habilitar Clocks de periféricos: GPIOA, GPIOB, GPIOC, AFIO, USART1
+    RCC->APB2ENR |= RCC_APB2ENR_IOPAEN | RCC_APB2ENR_IOPBEN |
+                    RCC_APB2ENR_IOPCEN | RCC_APB2ENR_AFIOEN | RCC_APB2ENR_USART1EN;
+
+    // Liberar PB4 (por defecto asignado a JTAG NJTRST) manteniendo SWD activo para debug/flasheo
+    AFIO->MAPR = (AFIO->MAPR & ~AFIO_MAPR_SWJ_CFG) | AFIO_MAPR_SWJ_CFG_JTAGDISABLE;
 
     // 2. Configurar PC13 (LED onboard de Blue Pill) como salida push-pull
     GPIOC->CRH &= ~GPIO_CRH_CNF13;
     GPIOC->CRH |= GPIO_CRH_MODE13_0; // 10MHz output
     GPIOC->ODR |= GPIO_ODR_ODR13;    // Apagado inicial (activo en bajo)
 
-    // 3. Configurar GPIOB para las 8 lámparas (PB0, PB1, PB10..PB15) como salida
-    // PB0, PB1 (Norte-Sur: Rojo, Amarillo)
-    GPIOB->CRL &= ~(GPIO_CRL_CNF0 | GPIO_CRL_CNF1);
-    GPIOB->CRL |= (GPIO_CRL_MODE0_1 | GPIO_CRL_MODE1_1);
+    // 3. Configurar GPIOB para los semáforos como salida Push-Pull (2 MHz):
+    // Fase 1: PB4 (Rojo), PB5 (Amarillo), PB6 (Verde)
+    // Fase 2: PB7 (Rojo)
+    GPIOB->CRL &= ~(GPIO_CRL_CNF4 | GPIO_CRL_MODE4 |
+                    GPIO_CRL_CNF5 | GPIO_CRL_MODE5 |
+                    GPIO_CRL_CNF6 | GPIO_CRL_MODE6 |
+                    GPIO_CRL_CNF7 | GPIO_CRL_MODE7);
+    GPIOB->CRL |=  (GPIO_CRL_MODE4_1 | GPIO_CRL_MODE5_1 |
+                    GPIO_CRL_MODE6_1 | GPIO_CRL_MODE7_1);
 
-    // PB10..PB15 (Norte-Sur: Verde, Peatonal; Este-Oeste: Rojo, Amarillo, Verde, Peatonal)
-    GPIOB->CRH &= ~(GPIO_CRH_CNF10 | GPIO_CRH_CNF11 | GPIO_CRH_CNF12 |
-                    GPIO_CRH_CNF13 | GPIO_CRH_CNF14 | GPIO_CRH_CNF15);
-    GPIOB->CRH |= (GPIO_CRH_MODE10_1 | GPIO_CRH_MODE11_1 | GPIO_CRH_MODE12_1 |
-                   GPIO_CRH_MODE13_1 | GPIO_CRH_MODE14_1 | GPIO_CRH_MODE15_1);
+    // Fase 2: PB8 (Amarillo), PB9 (Verde)
+    GPIOB->CRH &= ~(GPIO_CRH_CNF8 | GPIO_CRH_MODE8 |
+                    GPIO_CRH_CNF9 | GPIO_CRH_MODE9);
+    GPIOB->CRH |=  (GPIO_CRH_MODE8_1 | GPIO_CRH_MODE9_1);
 
-    // 4. Configurar PA0 como entrada con Pull-up (Pulsador peatonal)
-    GPIOA->CRL &= ~(GPIO_CRL_CNF0 | GPIO_CRL_MODE0);
-    GPIOA->CRL |= GPIO_CRL_CNF0_1; // Input pull-up/pull-down
-    GPIOA->ODR |= GPIO_ODR_ODR0;   // Pull-up
-
-    // 5. Configurar USART1: PA9 (TX alternate push-pull), PA10 (RX input pull-up)
+    // 4. Configurar USART1: PA9 (TX alternate push-pull), PA10 (RX input pull-up)
     GPIOA->CRH &= ~(GPIO_CRH_CNF9 | GPIO_CRH_MODE9 | GPIO_CRH_CNF10 | GPIO_CRH_MODE10);
     GPIOA->CRH |= (GPIO_CRH_CNF9_1 | GPIO_CRH_MODE9_0 | GPIO_CRH_MODE9_1 | GPIO_CRH_CNF10_1);
     GPIOA->ODR |= GPIO_ODR_ODR10;
 
     USART1->BRR = SystemCoreClock / 115200; // 115200 baud
-    USART1->CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_UE; // Habilitar TX, RX y USART
+    USART1->CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE | USART_CR1_UE;
+
+    // Configurar prioridad e interrupción en NVIC (prioridad 6 para compatibilidad con FreeRTOS)
+    NVIC_SetPriority(USART1_IRQn, 6);
+    NVIC_EnableIRQ(USART1_IRQn);
+}
+
+/* Manejador de interrupción de recepción serie USART1 */
+void USART1_IRQHandler(void) {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+    if (USART1->SR & USART_SR_RXNE) {
+        uint8_t byte = (uint8_t)(USART1->DR & 0xFF);
+        if (xUartRxQueue != NULL) {
+            xQueueSendFromISR(xUartRxQueue, &byte, &xHigherPriorityTaskWoken);
+        }
+    }
+
+    // Limpiar Overrun Error si se produce
+    if (USART1->SR & USART_SR_ORE) {
+        volatile uint32_t dummy = USART1->DR;
+        (void)dummy;
+    }
+
+    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
 void vHardwareSetLights(uint16_t lights_ns, uint16_t lights_eo) {
-    // Norte-Sur:
-    // PB0: Rojo, PB1: Amarillo, PB10: Verde, PB11: Peatonal
-    if (lights_ns & LIGHT_RED)        GPIOB->BSRR = GPIO_BSRR_BS0;  else GPIOB->BSRR = GPIO_BSRR_BR0;
-    if (lights_ns & LIGHT_YELLOW)     GPIOB->BSRR = GPIO_BSRR_BS1;  else GPIOB->BSRR = GPIO_BSRR_BR1;
-    if (lights_ns & LIGHT_GREEN)      GPIOB->BSRR = GPIO_BSRR_BS10; else GPIOB->BSRR = GPIO_BSRR_BR10;
-    if (lights_ns & LIGHT_PEDESTRIAN) GPIOB->BSRR = GPIO_BSRR_BS11; else GPIOB->BSRR = GPIO_BSRR_BR11;
+    // Fase 1 (Norte-Sur):
+    // PB4: Rojo, PB5: Amarillo, PB6: Verde
+    if (lights_ns & LIGHT_RED)    GPIOB->BSRR = GPIO_BSRR_BS4; else GPIOB->BSRR = GPIO_BSRR_BR4;
+    if (lights_ns & LIGHT_YELLOW) GPIOB->BSRR = GPIO_BSRR_BS5; else GPIOB->BSRR = GPIO_BSRR_BR5;
+    if (lights_ns & LIGHT_GREEN)  GPIOB->BSRR = GPIO_BSRR_BS6; else GPIOB->BSRR = GPIO_BSRR_BR6;
 
-    // Este-Oeste:
-    // PB12: Rojo, PB13: Amarillo, PB14: Verde, PB15: Peatonal
-    if (lights_eo & LIGHT_RED)        GPIOB->BSRR = GPIO_BSRR_BS12; else GPIOB->BSRR = GPIO_BSRR_BR12;
-    if (lights_eo & LIGHT_YELLOW)     GPIOB->BSRR = GPIO_BSRR_BS13; else GPIOB->BSRR = GPIO_BSRR_BR13;
-    if (lights_eo & LIGHT_GREEN)      GPIOB->BSRR = GPIO_BSRR_BS14; else GPIOB->BSRR = GPIO_BSRR_BR14;
-    if (lights_eo & LIGHT_PEDESTRIAN) GPIOB->BSRR = GPIO_BSRR_BS15; else GPIOB->BSRR = GPIO_BSRR_BR15;
+    // Fase 2 (Este-Oeste):
+    // PB7: Rojo, PB8: Amarillo, PB9: Verde
+    if (lights_eo & LIGHT_RED)    GPIOB->BSRR = GPIO_BSRR_BS7; else GPIOB->BSRR = GPIO_BSRR_BR7;
+    if (lights_eo & LIGHT_YELLOW) GPIOB->BSRR = GPIO_BSRR_BS8; else GPIOB->BSRR = GPIO_BSRR_BR8;
+    if (lights_eo & LIGHT_GREEN)  GPIOB->BSRR = GPIO_BSRR_BS9; else GPIOB->BSRR = GPIO_BSRR_BR9;
 
     // Conmutar LED PC13 para indicar actividad (Heartbeat)
     GPIOC->ODR ^= GPIO_ODR_ODR13;
@@ -395,3 +395,4 @@ void vHardwareSetLights(uint16_t lights_ns, uint16_t lights_eo) {
 void vApplicationIdleHook(void) {
     ulIdleCount++;
 }
+
