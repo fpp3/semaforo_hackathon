@@ -30,7 +30,6 @@ volatile uint16_t g_modbus_registers[REG_TOTAL_COUNT] = {
     [REG_FAULT_FLAGS]       = 0,
     [REG_LDR_MV]            = 500,    // 500 mV inicial (Luz de día)
     [REG_LDR_THRESHOLD_MV]  = 2000,   // 2000 mV umbral por defecto (conmutable por Maestro)
-    [REG_OP_MODE]           = OP_MODE_AUTO_LDR, // Modo Auto LDR por defecto
     [REG_LAMP_CURRENT_MA]   = 200,    // 200 mA nominal por lámpara activa
     [REG_CURRENT_TOL_PCT]   = 35,     // 35% de tolerancia admisible de corriente
     [REG_EXPECTED_CURR_MA]  = 400     // Corriente esperada calculada
@@ -84,49 +83,6 @@ void vStateMachineTask(void *pvParameters) {
     vTaskDelay(pdMS_TO_TICKS(2000));
 
     while (1) {
-        uint16_t opMode = g_modbus_registers[REG_OP_MODE];
-        uint16_t inputs = g_modbus_registers[REG_INPUTS_DIGITAL];
-
-        // MODO 1: Destellante manual O MODO 3 (Auto LDR) cuando oscurece (Noche)
-        if (opMode == OP_MODE_DESTELLANTE || (opMode == OP_MODE_AUTO_LDR && (inputs & INPUT_LDR_NIGHT))) {
-            g_modbus_registers[REG_FSM_STATE] = 99; // 99 = Destellante nocturno / precaución
-            g_modbus_registers[REG_LIGHTS_NS] = LIGHT_YELLOW;
-            g_modbus_registers[REG_LIGHTS_EO] = LIGHT_YELLOW;
-            vHardwareSetLights(LIGHT_YELLOW, LIGHT_YELLOW);
-
-            // 500 ms encendido
-            for (int i = 0; i < 5; i++) {
-                vTaskDelay(pdMS_TO_TICKS(100));
-                uint16_t m = g_modbus_registers[REG_OP_MODE];
-                uint16_t in = g_modbus_registers[REG_INPUTS_DIGITAL];
-                if (m != opMode || (m == OP_MODE_AUTO_LDR && !(in & INPUT_LDR_NIGHT))) break;
-            }
-
-            g_modbus_registers[REG_LIGHTS_NS] = 0;
-            g_modbus_registers[REG_LIGHTS_EO] = 0;
-            vHardwareSetLights(0, 0);
-
-            // 500 ms apagado
-            for (int i = 0; i < 5; i++) {
-                vTaskDelay(pdMS_TO_TICKS(100));
-                uint16_t m = g_modbus_registers[REG_OP_MODE];
-                uint16_t in = g_modbus_registers[REG_INPUTS_DIGITAL];
-                if (m != opMode || (m == OP_MODE_AUTO_LDR && !(in & INPUT_LDR_NIGHT))) break;
-            }
-            continue;
-        }
-
-        // MODO 2: Todo Rojo forzado (Emergencia / Seguridad)
-        if (opMode == OP_MODE_TODO_ROJO) {
-            g_modbus_registers[REG_FSM_STATE] = 98; // 98 = Todo Rojo forzado
-            g_modbus_registers[REG_LIGHTS_NS] = LIGHT_RED;
-            g_modbus_registers[REG_LIGHTS_EO] = LIGHT_RED;
-            vHardwareSetLights(LIGHT_RED, LIGHT_RED);
-            vTaskDelay(pdMS_TO_TICKS(200));
-            continue;
-        }
-
-        // MODO 0: Normal FSM (o Auto LDR durante el día)
         uint16_t duration_sec = 0;
         uint16_t lights_ns = 0;
         uint16_t lights_eo = 0;
@@ -197,25 +153,12 @@ void vStateMachineTask(void *pvParameters) {
             // Actuar sobre el hardware físico
             vHardwareSetLights(lights_ns, lights_eo);
 
-            // Esperar la duración del intervalo en segundos con muestreo cada 100 ms para respuesta inmediata
+            // Esperar la duración del intervalo en segundos
             for (uint16_t s = 0; s < duration_sec; s++) {
-                for (int sub = 0; sub < 10; sub++) {
-                    vTaskDelay(pdMS_TO_TICKS(100));
-
-                    // Si cambia el modo o se detecta noche en Auto LDR, salir inmediatamente
-                    uint16_t curMode = g_modbus_registers[REG_OP_MODE];
-                    uint16_t curIn   = g_modbus_registers[REG_INPUTS_DIGITAL];
-                    if (curMode == OP_MODE_DESTELLANTE || curMode == OP_MODE_TODO_ROJO ||
-                        (curMode == OP_MODE_AUTO_LDR && (curIn & INPUT_LDR_NIGHT))) {
-                        s = duration_sec; // Salir de inmediato
-                        break;
-                    }
-
-                    // Si el maestro pone en 0 el tiempo del estado actual en caliente, salir
-                    if (g_modbus_registers[currentState] == 0) {
-                        s = duration_sec;
-                        break;
-                    }
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                // Si el maestro pone en 0 el tiempo del estado actual en caliente, salir
+                if (g_modbus_registers[currentState] == 0) {
+                    break;
                 }
             }
         } else {
@@ -437,15 +380,14 @@ void vHardwareInit(void) {
                     RCC_APB2ENR_IOPCEN | RCC_APB2ENR_AFIOEN | RCC_APB2ENR_USART1EN |
                     RCC_APB2ENR_ADC1EN;
 
-    // Prescaler del ADC: APB2 / 6 = 72MHz / 6 = 12MHz (máx permitido 14MHz)
+    // Prescaler del ADC: APB2 / 6 = 72MHz / 6 = 12MHz
     RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_ADCPRE) | RCC_CFGR_ADCPRE_DIV6;
 
     // Liberar PB4 (por defecto asignado a JTAG NJTRST) manteniendo SWD activo para debug/flasheo
     AFIO->MAPR = (AFIO->MAPR & ~AFIO_MAPR_SWJ_CFG) | AFIO_MAPR_SWJ_CFG_JTAGDISABLE;
 
     // Configurar PB0 y PB1 como entradas analógicas:
-    // PB0 (ADC1_IN8): Sensor LDR (Divisor 3.3V -- 10k -- PB0 -- LDR -- GND)
-    // PB1 (ADC1_IN9): Potenciómetro simulación corriente (3.3V -- POTE -- GND)
+    // PB0 (ADC1_IN8): Sensor, LDR PB1 (ADC1_IN9): Potenciómetro
     GPIOB->CRL &= ~(GPIO_CRL_CNF0 | GPIO_CRL_MODE0 | GPIO_CRL_CNF1 | GPIO_CRL_MODE1);
 
     // Calibración e inicialización de ADC1 con disparador por software (SWSTART)
@@ -456,17 +398,15 @@ void vHardwareInit(void) {
     ADC1->CR2 |= ADC_CR2_CAL;
     while (ADC1->CR2 & ADC_CR2_CAL);
 
-    // Tiempo de muestreo para canal 8 (PB0) y canal 9 (PB1): 239.5 ciclos (máxima precisión)
+    // Tiempo de muestreo para canal 8 (PB0) y canal 9 (PB1): 239.5 ciclos
     ADC1->SMPR2 |= (0x7 << ADC_SMPR2_SMP8_Pos) | (0x7 << ADC_SMPR2_SMP9_Pos);
 
-    // 2. Configurar PC13 (LED onboard de Blue Pill) como salida push-pull
+    // 2. Configurar PC13 (LED Blue Pill) como salida push-pull
     GPIOC->CRH &= ~GPIO_CRH_CNF13;
-    GPIOC->CRH |= GPIO_CRH_MODE13_0; // 10MHz output
-    GPIOC->ODR |= GPIO_ODR_ODR13;    // Apagado inicial (activo en bajo)
+    GPIOC->CRH |= GPIO_CRH_MODE13_0;
+    GPIOC->ODR |= GPIO_ODR_ODR13;
 
     // 3. Configurar GPIOB para los semáforos como salida Push-Pull (2 MHz):
-    // Fase 1: PB4 (Rojo), PB5 (Amarillo), PB6 (Verde)
-    // Fase 2: PB7 (Rojo)
     GPIOB->CRL &= ~(GPIO_CRL_CNF4 | GPIO_CRL_MODE4 |
                     GPIO_CRL_CNF5 | GPIO_CRL_MODE5 |
                     GPIO_CRL_CNF6 | GPIO_CRL_MODE6 |
@@ -474,7 +414,6 @@ void vHardwareInit(void) {
     GPIOB->CRL |=  (GPIO_CRL_MODE4_1 | GPIO_CRL_MODE5_1 |
                     GPIO_CRL_MODE6_1 | GPIO_CRL_MODE7_1);
 
-    // Fase 2: PB8 (Amarillo), PB9 (Verde)
     GPIOB->CRH &= ~(GPIO_CRH_CNF8 | GPIO_CRH_MODE8 |
                     GPIO_CRH_CNF9 | GPIO_CRH_MODE9);
     GPIOB->CRH |=  (GPIO_CRH_MODE8_1 | GPIO_CRH_MODE9_1);
@@ -484,15 +423,14 @@ void vHardwareInit(void) {
     GPIOA->CRH |= (GPIO_CRH_CNF9_1 | GPIO_CRH_MODE9_0 | GPIO_CRH_MODE9_1 | GPIO_CRH_CNF10_1);
     GPIOA->ODR |= GPIO_ODR_ODR10;
 
-    USART1->BRR = SystemCoreClock / 115200; // 115200 baud
+    USART1->BRR = SystemCoreClock / 115200;
     USART1->CR1 = USART_CR1_TE | USART_CR1_RE | USART_CR1_RXNEIE | USART_CR1_UE;
 
-    // Configurar prioridad e interrupción en NVIC (prioridad 6 para compatibilidad con FreeRTOS)
+    // Configurar NVIC (prioridad 6 para compatibilidad con FreeRTOS)
     NVIC_SetPriority(USART1_IRQn, 6);
     NVIC_EnableIRQ(USART1_IRQn);
 }
 
-/* Manejador de interrupción de recepción serie USART1 */
 void USART1_IRQHandler(void) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 

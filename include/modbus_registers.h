@@ -33,7 +33,6 @@ typedef enum {
     /* --- 4. Sensor LDR Crepuscular y Control de Modo ------------------------- */
     REG_LDR_MV,          // Tensión leída en el LDR (PB0 / ADC1 Ch 8) en mV (0 a 3300 mV)
     REG_LDR_THRESHOLD_MV,// Umbral de conmutación Noche en mV (Default: 2000 mV)
-    REG_OP_MODE,         // Modo de operación: 0=Normal, 1=Destellante, 2=Todo Rojo, 3=Auto LDR
 
     /* --- 5. Umbrales de Corriente y Diagnóstico de Falla de Lámparas -------- */
     REG_LAMP_CURRENT_MA, // Corriente típica por lámpara activa en mA (Default: 200 mA)
