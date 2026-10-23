@@ -1,0 +1,42 @@
+\chapter{Anexos: Archivos Fuente y Recursos Adjuntos}
+\label{sec:anexos}
+
+Con el propósito de mantener la concisión del documento y facilitar la inspección directa del código, los archivos
+fuente del proyecto se han incorporado como adjuntos embebidos en este documento PDF.
+
+Los lectores de documentos PDF compatibles (tales como Adobe Acrobat Reader, Okular, Evince o los visores integrados
+de navegadores modernos) permiten extraer, guardar y visualizar directamente los archivos haciendo clic sobre las
+anotaciones de la tabla~\ref{tab:anexos_adjuntos} o accediendo al panel lateral de archivos adjuntos del visor.
+
+\begin{table}[!ht]
+  \centering
+  \small
+  \caption{Listado de archivos fuente y recursos técnicos embebidos en el documento.}
+  \label{tab:anexos_adjuntos}
+  \begin{tabular}{c l p{6.4cm} c}
+    \toprule
+    \textbf{Elemento} & \textbf{Archivo} & \textbf{Descripción Técnica} & \textbf{Adjunto} \\
+    \midrule
+    1 & \texttt{modbus\_registers.h} & Definición del mapa de registros y máscaras de bits & \attachfile[description={Archivo de cabecera modbus-registers.h}]{sources/include/modbus_registers.h} \\
+    2 & \texttt{main.c} & Firmware de la central en FreeRTOS sobre STM32F103 & \attachfile[description={Codigo fuente principal main.c}]{sources/src/main.c} \\
+    3 & \texttt{FreeRTOSConfig.h} & Configuración del núcleo de tiempo real FreeRTOS & \attachfile[description={Configuracion FreeRTOS}]{sources/include/FreeRTOSConfig.h} \\
+    4 & \texttt{index.html} & Aplicación web SCADA y Maestro Modbus RTU & \attachfile[description={Aplicacion web index.html}]{sources/index.html} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Estructura de los Recursos Adjuntos}
+\label{sec:descripcion_recursos}
+
+A continuación se resume el alcance de cada uno de los archivos embebidos:
+\begin{itemize}
+  \item \texttt{modbus\_registers.h:} Cabecera en lenguaje C que tipifica los 20 registros del vector global compartido,
+  las constantes de tiempo predeterminadas y las banderas de diagnóstico vial.
+  \item \texttt{main.c:} Implementación completa del firmware embebido, comprendiendo la inicialización de hardware, el
+  manejador de interrupciones de USART1, la máquina de estados (\texttt{vStateMachineTask}), el muestreo analógico
+  (\texttt{vReadInputsTask}) y el procesador de comandos Modbus (\texttt{vSerialCommTask}).
+  \item \texttt{index.html:} Aplicación autónoma desarrollada en HTML5, CSS y JavaScript que implementa la lógica de
+  maestro Modbus RTU, comunicándose con el hardware mediante la interfaz Web Serial API o en modo de simulación.
+  \item \texttt{FreeRTOSConfig.h:} Parámetros del planificador apropiativo, configuración de la frecuencia del tick a
+  $1\unit{\kilo\hertz}$, asignación de memoria heap y prioridades de interrupción de FreeRTOS.
+\end{itemize}

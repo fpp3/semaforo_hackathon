@@ -4,20 +4,18 @@
 #include <stdint.h>
 
 /* ========================================================================= */
-/* MAPA DE REGISTROS MODBUS (Holding / Input Registers - 16 bits)            */
-/* Compartido entre las 3 tareas de FreeRTOS                                 */
+/* MAPA DE REGISTROS MODBUS                                                  */
 /* ========================================================================= */
 typedef enum {
     /* --- 1. Intervalos de tiempo configurables por el Maestro (en segundos) --- */
-    /* Valores por defecto basados en central_semaforo.pdf (Página 9)            */
-    REG_TIME_INT1 = 0,   // Int 1: NS Verde (+ Peatonal), EO Rojo   (Default: 25 s)
-    REG_TIME_INT2,       // Int 2: NS Amarillo, EO Rojo             (Default:  3 s)
-    REG_TIME_INT3,       // Int 3: NS Rojo, EO Rojo (Despeje)       (Default:  2 s)
-    REG_TIME_INT4,       // Int 4: NS Rojo, EO Verde (+ Peatonal)   (Default: 25 s)
-    REG_TIME_INT5,       // Int 5: NS Rojo, EO Amarillo             (Default:  3 s)
-    REG_TIME_INT6,       // Int 6: NS Rojo, EO Rojo (Despeje)       (Default:  2 s)
-    REG_TIME_INT7,       // Int 7: NS Amarillo, EO Amarillo         (Default:  0 s)
-    REG_TIME_INT8,       // Int 8: NS Off, EO Off                   (Default:  0 s)
+    REG_TIME_INT1 = 0,   // Int 1: NS Verde (+ Peatonal), EO Rojo
+    REG_TIME_INT2,       // Int 2: NS Amarillo, EO Rojo
+    REG_TIME_INT3,       // Int 3: NS Rojo, EO Rojo (Despeje)
+    REG_TIME_INT4,       // Int 4: NS Rojo, EO Verde (+ Peatonal)
+    REG_TIME_INT5,       // Int 5: NS Rojo, EO Amarillo
+    REG_TIME_INT6,       // Int 6: NS Rojo, EO Rojo (Despeje)
+    REG_TIME_INT7,       // Int 7: NS Amarillo, EO Amarillo
+    REG_TIME_INT8,       // Int 8: NS Off, EO Off
 
     /* --- 2. Estado de la FSM y Lámparas (Actualizado por vStateMachineTask) --- */
     REG_FSM_STATE,       // Estado actual de la FSM (0 a 7)
@@ -47,7 +45,7 @@ typedef enum {
 #define LIGHT_YELLOW     (1 << 1)
 #define LIGHT_GREEN      (1 << 2)
 #define LIGHT_ARROW_PED  (1 << 3)   // Flecha peatonal de paso (encendida/apagada)
-#define LIGHT_PEDESTRIAN LIGHT_ARROW_PED // Alias para compatibilidad
+#define LIGHT_PEDESTRIAN LIGHT_ARROW_PED
 
 /* Máscaras de bits para entradas digitales */
 #define INPUT_MAINS_220V (1 << 0)   // Presencia de red eléctrica 220V AC

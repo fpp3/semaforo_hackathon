@@ -1,0 +1,52 @@
+\begin{tikzpicture}[
+    auto,
+    font = \footnotesize\sffamily,
+    node distance = 0.8cm and 1.2cm,
+    startstop/.style = {rectangle, rounded corners=5pt, minimum width=3.4cm, minimum height=0.75cm, align=center, draw=black!70, fill=blue!10, thick},
+    process/.style = {rectangle, minimum width=3.4cm, minimum height=0.75cm, align=center, draw=black!70, fill=gray!10, rounded corners=2pt},
+    task/.style = {rectangle, minimum width=3.2cm, minimum height=0.95cm, align=center, draw=teal!80, fill=teal!10, rounded corners=3pt, thick},
+    queue/.style = {rectangle, minimum width=2.4cm, minimum height=0.75cm, align=center, draw=orange!80, fill=orange!10, dashed, thick},
+    shared/.style = {rectangle, minimum width=3.2cm, minimum height=1.0cm, align=center, draw=purple!80, fill=purple!10, thick},
+    isr/.style = {rectangle, minimum width=2.6cm, minimum height=0.75cm, align=center, draw=red!70, fill=red!10, rounded corners=2pt},
+    arrow/.style = {-{Stealth[length=2.5mm]}, thick, draw=black!70},
+    darrow/.style = {{Stealth[length=2.5mm]}-{Stealth[length=2.5mm]}, thick, draw=purple!80}
+]
+
+  % Columna 1: Inicialización secuencial del sistema
+  \node (start) [startstop] {Reinicio / Encendido};
+  \node (clock) [process, below=0.5cm of start] {\texttt{SystemCoreClockUpdate()}\\(PLL a 72 MHz)};
+  \node (hwinit) [process, below=0.5cm of clock] {\texttt{vHardwareInit()}\\GPIO, ADC1, USART1};
+  \node (init_res) [process, below=0.5cm of hwinit] {\texttt{xQueueCreate()}\\Reserva de memoria};
+  \node (tasks) [process, below=0.5cm of init_res] {\texttt{xTaskCreate()}\\Instanciación de 3 tareas};
+  \node (sched) [startstop, below=0.5cm of tasks] {\texttt{vTaskStartScheduler()}\\Inicio del scheduler};
+
+  \draw [arrow] (start) -- (clock);
+  \draw [arrow] (clock) -- (hwinit);
+  \draw [arrow] (hwinit) -- (init_res);
+  \draw [arrow] (init_res) -- (tasks);
+  \draw [arrow] (tasks) -- (sched);
+
+  % Columna 2: Tareas concurrentes bajo FreeRTOS
+  \node (t_fsm) [task, right=1.6cm of sched] {\textbf{vStateMachineTask}\\Prioridad: 3 \ \textbar\ \ Stack: 256};
+  \node (t_io)  [task, above=1.1cm of t_fsm] {\textbf{vReadInputsTask}\\Prioridad: 2 \ \textbar\ \ Stack: 192};
+  \node (t_ser) [task, below=1.1cm of t_fsm] {\textbf{vSerialCommTask}\\Prioridad: 2 \ \textbar\ \ Stack: 256};
+
+  \draw [arrow] (sched.east) -- ++(0.5,0) |- (t_fsm.west);
+  \draw [arrow] (sched.east) -- ++(0.5,0) |- (t_io.west);
+  \draw [arrow] (sched.east) -- ++(0.5,0) |- (t_ser.west);
+
+  % Columna 3: Vector global compartido en RAM
+  \node (reg) [shared, right=2.0cm of t_fsm] {\textbf{g\_modbus\_registers}\\(Vector global en RAM)};
+
+  \draw [darrow] (t_fsm.east) -- node [above, scale=0.75] {Lámparas / FSM} (reg.west);
+  \draw [darrow] (t_io.east)  -- node [above, scale=0.75, sloped] {Sensores / Fallas} (reg.north west);
+  \draw [darrow] (t_ser.east) -- node [below, scale=0.75, sloped] {Lectura / Escritura} (reg.south west);
+
+  % Cadena de recepción serie (ISR -> Cola -> Tarea Serial) limpia sin cruzar líneas
+  \node (queue) [queue, below=0.8cm of t_ser] {\textbf{xUartRxQueue}\\(Búfer de 64 bytes)};
+  \node (isr)   [isr, left=1.0cm of queue] {\textbf{USART1\_IRQHandler}\\Interrupción RXNE};
+
+  \draw [arrow] (isr.east) -- node [above, scale=0.75] {\texttt{FromISR}} (queue.west);
+  \draw [arrow] (queue.north) -- node [right, scale=0.75] {\texttt{xQueueReceive}} (t_ser.south);
+
+\end{tikzpicture}

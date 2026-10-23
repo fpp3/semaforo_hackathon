@@ -1,0 +1,120 @@
+\begin{tikzpicture}[
+    auto,
+    font=\footnotesize\sffamily,
+    node distance=1.1cm and 1.8cm,
+    splitstate/.style 2 args={
+      rectangle, rounded corners=4pt, minimum width=4.1cm, minimum height=1.35cm,
+      align=center, draw=black!80, line width=0.8pt,
+      path picture={
+        \fill[#1] (path picture bounding box.north west) rectangle (path picture bounding box.east);
+        \fill[#2] (path picture bounding box.west) rectangle (path picture bounding box.south east);
+        \draw[black!20, dashed] (path picture bounding box.west) -- (path picture bounding box.east);
+      }
+    },
+    intermitstate/.style 2 args={
+      rectangle, rounded corners=4pt, minimum width=4.1cm, minimum height=1.35cm,
+      align=center, draw=orange!85!black, line width=0.9pt,
+      path picture={
+        \fill[#1] (path picture bounding box.north west) rectangle (path picture bounding box.east);
+        \fill[#2] (path picture bounding box.west) rectangle (path picture bounding box.south east);
+        \draw[black!20, dashed] (path picture bounding box.west) -- (path picture bounding box.east);
+      }
+    },
+    startnode/.style={circle, minimum size=0.85cm, align=center, draw=black!70, fill=blue!10, thick},
+    arrow/.style={-{Stealth[length=2.5mm]}, line width=0.9pt, draw=black!75},
+    cfgarrow/.style={-{Stealth[length=2.5mm]}, line width=0.85pt, draw=orange!80!black, dashed}
+]
+
+  % Nodo de Inicio y Arranque Seguro
+  \node (start) [startnode] {Inicio};
+  
+  \node (boot) [splitstate={red!20}{red!20}, below=0.7cm of start] {
+    \textbf{Arranque Seguro (2 s)}\\
+    NS: Rojo \quad EO: Rojo\\
+    \scriptsize Despeje inicial (Estado 2)
+  };
+
+  % Columna 1 (Izquierda): Fase 1 (Norte-Sur vehicular activa)
+  \node (st0) [splitstate={green!22}{red!20}, below=0.9cm of boot] {
+    \textbf{Estado 0}\\
+    NS: Verde (+ Peatonal)\\
+    EO: Rojo\\
+    \scriptsize Paso vehicular Norte--Sur
+  };
+
+  \node (st1) [splitstate={yellow!35}{red!20}, below=1.0cm of st0] {
+    \textbf{Estado 1}\\
+    NS: Amarillo\\
+    EO: Rojo\\
+    \scriptsize Advertencia fin de paso NS
+  };
+
+  \node (st2) [splitstate={red!20}{red!20}, below=1.0cm of st1] {
+    \textbf{Estado 2}\\
+    NS: Rojo\\
+    EO: Rojo\\
+    \scriptsize Despeje de encrucijada
+  };
+
+  % Columna 2 (Centro): Fase 2 (Este-Oeste vehicular activa)
+  \node (st3) [splitstate={red!20}{green!22}, right=1.8cm of st2] {
+    \textbf{Estado 3}\\
+    NS: Rojo\\
+    EO: Verde (+ Peatonal)\\
+    \scriptsize Paso vehicular Este--Oeste
+  };
+
+  \node (st4) [splitstate={red!20}{yellow!35}, above=1.0cm of st3] {
+    \textbf{Estado 4}\\
+    NS: Rojo\\
+    EO: Amarillo\\
+    \scriptsize Advertencia fin de paso EO
+  };
+
+  \node (st5) [splitstate={red!20}{red!20}, above=1.0cm of st4] {
+    \textbf{Estado 5}\\
+    NS: Rojo\\
+    EO: Rojo\\
+    \scriptsize Despeje de encrucijada
+  };
+
+  % Columna 3 (Derecha): Régimen Intermitente / Destellante (Estados 6 y 7)
+  \node (st6) [intermitstate={yellow!35}{yellow!35}, right=1.8cm of st5] {
+    \textbf{Estado 6}\\
+    NS: Amarillo\\
+    EO: Amarillo\\
+    \scriptsize Intermitente ON (Precaución)
+  };
+
+  \node (st7) [intermitstate={black!10}{black!10}, below=1.2cm of st6] {
+    \textbf{Estado 7}\\
+    NS: Apagado\\
+    EO: Apagado\\
+    \scriptsize Intermitente OFF (Cadencia)
+  };
+
+  % Conexiones del flujo de arranque y ciclo vehicular
+  \draw [arrow] (start) -- (boot);
+  \draw [arrow] (boot) -- (st0);
+  \draw [arrow] (st0) -- node [right, scale=0.75] {Vence Int 1} (st1);
+  \draw [arrow] (st1) -- node [right, scale=0.75] {Vence Int 2} (st2);
+  \draw [arrow] (st2) -- node [above, scale=0.75] {Vence Int 3} (st3);
+  \draw [arrow] (st3) -- node [right, scale=0.75] {Vence Int 4} (st4);
+  \draw [arrow] (st4) -- node [right, scale=0.75] {Vence Int 5} (st5);
+
+  % Retorno directo del ciclo vehicular cuando Int 7 = 0 y Int 8 = 0
+  \draw [arrow] (st5.west) -- node [above, scale=0.72, align=center] {Vence Int 6\\{\scriptsize (si Int 7, 8 = 0 s)}} (st0.east);
+
+  % Conexión hacia Estados 6 y 7 cuando Int 7 > 0 s
+  \draw [cfgarrow] (st5.east) -- node [above, scale=0.72, align=center] {Int 7 $>$ 0 s} (st6.west);
+  \draw [arrow] (st6) -- node [right, scale=0.75] {Vence Int 7} (st7);
+
+  % Retorno desde Estado 7 al inicio del ciclo (perimetral inferior) o lazo intermitente
+  \coordinate (under) at ($(st2.south)+(0,-0.55cm)$);
+  \draw [cfgarrow] (st7.south) -- (st7.south |- under) 
+    -- node [below, scale=0.72] {Vence Int 8 $\to$ reinicia ciclo en Estado 0}
+    ($(st0.west |- under)+(-0.55cm,0)$) 
+    -- ($(st0.west)+(-0.55cm,0)$) -- (st0.west);
+  \draw [cfgarrow] (st7.east) to[out=0, in=0] node [right, scale=0.72, align=left] {Si Int 1--6 = 0 s\\(Destello puro)} (st6.east);
+
+\end{tikzpicture}

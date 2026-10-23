@@ -1,0 +1,82 @@
+\documentclass[]{informeutn}
+
+% Librerías adicionales de TikZ para diagramas de flujo y estados
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning, calc, backgrounds, fit}
+
+\usepackage{csquotes}
+\usepackage{attachfile}
+
+% Unidades adicionales
+\newcommand{\MHz}{\,\unit{\mega\hertz}}
+\newcommand{\kHz}{\,\unit{\kilo\hertz}}
+
+% Recurso bibliográfico
+\addbibresource{fuentes.bib}
+
+% Configuración del paquete listings para código fuente
+\definecolor{codegreen}{rgb}{0,0.55,0}
+\definecolor{codegray}{rgb}{0.45,0.45,0.45}
+\definecolor{codepurple}{rgb}{0.55,0,0.80}
+\definecolor{codebg}{rgb}{0.97,0.97,0.97}
+
+\lstdefinestyle{codestyle}{
+  backgroundcolor=\color{codebg},
+  basicstyle=\scriptsize\ttfamily,
+  breakatwhitespace=false,
+  breaklines=true,
+  captionpos=b,
+  commentstyle=\color{codegreen},
+  frame=single,
+  keepspaces=true,
+  keywordstyle=\color{blue}\bfseries,
+  numbers=left,
+  numbersep=6pt,
+  numberstyle=\tiny\color{codegray},
+  rulecolor=\color{black!30},
+  showspaces=false,
+  showstringspaces=false,
+  showtabs=false,
+  stepnumber=1,
+  stringstyle=\color{codepurple},
+  tabsize=2,
+  extendedchars=true,
+  literate=
+    {á}{{\'a}}1 {é}{{\'e}}1 {í}{{\'i}}1 {ó}{{\'o}}1 {ú}{{\'u}}1
+    {Á}{{\'A}}1 {É}{{\'E}}1 {Í}{{\'I}}1 {Ó}{{\'O}}1 {Ú}{{\'U}}1
+    {ñ}{{\~n}}1 {Ñ}{{\~N}}1
+    {¿}{{?`}}1 {¡}{{!`}}1
+    {•}{{$\bullet$}}1 {±}{{$\pm$}}1 {≥}{{$\ge$}}1 {—}{{---}}1
+    {°}{{$^\circ$}}1
+    {☀}{{[sol]}}1 {☀️}{{[sol]}}1
+    {⚠}{{[aviso]}}1 {⚠️}{{[aviso]}}1
+    {✔️}{{[ok]}}1 {✔}{{[ok]}}1
+    {🌙}{{[luna]}}1
+    {🔥}{{[fuego]}}1
+}
+
+% Metadatos del informe
+\materia{Técnicas Digitales II -- Hackathon 2026}
+\titulo{Central Semafórica de Dos Fases}
+\subtitulo{Firmware Multitarea en FreeRTOS sobre STM32 y Aplicación Modbus RTU Maestro}
+\comision{4R2}
+\autores{Gastón Grasso 401892\\ Franco Palombo 401910\\ Angelo Prieto 401012}
+\fecha{\today}
+
+\begin{document}
+
+  \maketitle
+  \tableofcontents
+  \setcounter{page}{1}
+  \thispagestyle{plain}
+
+  \input{chapters/1-introduccion.tex}
+  \input{chapters/2-firmware.tex}
+  \input{chapters/3-aplicacion_control.tex}
+  \input{chapters/4-conclusiones.tex}
+
+  \nocite{*}
+  \printbibliography[heading=bibnumbered, title={Fuentes}]
+
+  \input{chapters/5-anexos.tex}
+
+\end{document}

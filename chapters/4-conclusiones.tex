@@ -1,0 +1,21 @@
+\chapter{Conclusiones}
+\label{sec:conclusiones}
+
+El desarrollo y verificación del firmware sobre el microcontrolador STM32F103 (núcleo ARM Cortex-M3) junto con el
+sistema operativo FreeRTOS permitieron cumplir satisfactoriamente con los requerimientos operativos planteados para el
+Hackathon 2026.
+La división funcional en tres tareas concurrentes con prioridades diferenciadas demostró ser eficaz para desacoplar
+las responsabilidades críticas de control temporal frente a los procesos de diagnóstico analógico y comunicación
+serie.
+
+En particular, la estrategia de arranque seguro con retardo de despeje en Todo Rojo y el submuestreo temporal en
+bloques de $100\ms$ dentro de la máquina de estados garantizaron una respuesta inmediata ante cambios de modo o
+consignas recibidas por la red serie, evitando estados intermedios inconsistentes o demoras perjudiciales en la
+señalización vial. Asimismo, la incorporación del algoritmo de cálculo de corriente esperada posibilitó la detección
+precoz de anomalías por lámparas abiertas o sobrecorrientes en los cabezales, confiriendo al equipo capacidades de
+diagnóstico preventivo.
+
+Por su parte, la implementación del protocolo estándar Modbus RTU sobre la interfaz USART1, asistida por una cola de
+interrupción y detección de fin de trama por silencio de línea ($t_{3.5}$), aseguró una comunicación confiable con el
+panel de supervisión web sin sobrecargar la CPU. En definitiva, la solución técnica alcanzada combina robustez en la
+conmutación física de fases, flexibilidad de configuración remota y supervisión activa del estado del sistema.

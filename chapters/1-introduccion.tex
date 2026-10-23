@@ -1,0 +1,19 @@
+\chapter{Introducción}
+\label{sec:introduccion}
+
+El presente informe detalla el desarrollo, la arquitectura de firmware y la aplicación de control para la central
+electrónica de semáforos diseñada en el marco del Hackathon 2026. El propósito del proyecto consistió en concebir e
+implementar un sistema capaz de regular el tránsito vehicular y peatonal en una intersección de dos fases
+ortogonales (Norte--Sur y Este--Oeste).
+
+El núcleo de control fue desarrollado sobre la plataforma embebida STM32F103 (Blue Pill), cuyo microcontrolador
+ARM Cortex-M3 opera junto con el sistema operativo de tiempo real FreeRTOS. A partir de una arquitectura multitarea
+desacoplada, el firmware gestiona la máquina de estados de las señales luminosas, ejecuta la adquisición periódica de
+sensores y variables de diagnóstico, y atiende peticiones de comunicación serie industrial bajo el protocolo Modbus RTU
+en modalidad esclavo.
+
+De manera complementaria, se diseñó (con el uso de la IA) una aplicación de supervisión y comando que asume el rol de
+maestro en la red.  Esta herramienta permite auditar en tiempo real la telemetría del controlador, conmutar modos de
+operación en caliente y reprogramar los intervalos temporales de cada fase sin interrumpir la ejecución del sistema. En
+los capítulos siguientes se expone detalladamente el funcionamiento interno del firmware, el esquema de estados y la
+integración con la interfaz de usuario.

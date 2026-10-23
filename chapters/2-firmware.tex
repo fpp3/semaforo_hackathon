@@ -1,0 +1,198 @@
+\chapter{Arquitectura y Funcionamiento del Firmware}
+\label{sec:firmware}
+
+El firmware de la central semafórica se estructuró a partir de una separación funcional en tres tareas concurrentes
+administradas por el núcleo FreeRTOS. La sincronización y el intercambio de información entre las tareas se realiza
+a través de un vector global compartido en memoria RAM, el cual mapea directamente la tabla de registros Modbus RTU.
+Este diseño desacopla el control temporal de las luces, la lectura periódica de transductores y la atención de la
+interfaz serie.
+
+\section{Inicialización del Hardware y Flujo de Ejecución}
+\label{sec:hw_init}
+
+Al energizarse la placa STM32F103, se actualiza la frecuencia del núcleo a $72\MHz$ mediante la función
+\texttt{SystemCoreClockUpdate}. Seguidamente, la rutina \texttt{vHardwareInit} habilita los relojes de periféricos
+en el bus APB2 (puertos GPIOA, GPIOB, GPIOC, AFIO, USART1 y ADC1). Para maximizar la precisión del conversor analógico
+a digital sin exceder el límite operativo de $14\MHz$, se configuró el prescaler del ADC en factor DIV6 ($12\MHz$).
+
+A fin de utilizar el pin PB4 como salida de control para la lámpara roja de la Fase 1, se modificó el registro
+\texttt{AFIO->MAPR} para deshabilitar la función JTAG y conservar el depurador SWD activo. Las salidas destinadas a
+los cabezales luminosos se configuraron en modo push-pull con límite de velocidad de $2\MHz$: PB4 (Rojo), PB5
+(Amarillo) y PB6 (Verde) para la Fase 1 (Norte--Sur); PB7 (Rojo), PB8 (Amarillo) y PB9 (Verde) para la Fase 2
+(Este--Oeste). El pin PC13, vinculado al led integrado de la placa, se declaró como salida para proporcionar una señal
+visual de actividad en cada conmutación.
+
+\begin{figure}[!ht]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/fig_flujo_firmware.tex}}
+  \caption{Flujo general de inicialización y arquitectura multitarea en FreeRTOS.}
+  \label{fig:flujo_firmware}
+\end{figure}
+
+Para la adquisición de magnitudes analógicas, los terminales PB0 (canal 8 de ADC1) y PB1 (canal 9 de ADC1) se
+dispusieron en modo analógico de alta impedancia, aplicando un tiempo de integración extendido de 239.5 ciclos de
+reloj para minimizar la impedancia de entrada y el ruido. Por su parte, el periférico USART1 se ajustó a una velocidad
+de $115200$ baudios con formato 8-N-1 sobre los pines PA9 (TX) y PA10 (RX). Se habilitó la interrupción por registro de
+recepcion no vacío (\texttt{RXNEIE}).
+
+Antes de transferir el control al scheduler, la función \texttt{main} reserva una cola de 64 bytes
+(\texttt{xUartRxQueue}) para almacenar los caracteres recibidos por la interrupción serie, e instancia las tres tareas
+principales detalladas en la figura~\ref{fig:flujo_firmware}.
+
+\section{Tarea de Control de Fases y Lógica de Semáforos}
+\label{sec:fsm_task}
+
+La tarea \texttt{vStateMachineTask} ejecuta con prioridad 3, la más alta de la aplicación, garantizando que los
+cambios de fase y los mecanismos de despeje no sufran demoras por tareas secundarias. Al iniciar la tarea, se adoptó
+como criterio de diseño preventivo un arranque seguro en Estado 2 (Todo Rojo) durante $2\s$, permitiendo despejar
+la intersección y estabilizar el sistema antes de iniciar la circulación.
+
+\begin{figure}[!ht]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/fig_fsm_semaforo.tex}}
+  \caption{Diagrama de transiciones de la máquina de estados cíclica de 8 intervalos.}
+  \label{fig:fsm_semaforo}
+\end{figure}
+
+Superada la etapa de arranque, la tarea opera sobre un anillo cíclico unificado de 8 intervalos temporales
+configurables (Estados 0 al 7), ilustrado en la figura~\ref{fig:fsm_semaforo}:
+\begin{itemize}
+  \item \texttt{Estado 0:} Habilita el paso vehicular en sentido Norte--Sur, manteniendo la fase Este--Oeste detenida.
+  \item \texttt{Estado 1:} Transición de advertencia en Norte--Sur con luz amarilla activa y Este--Oeste
+    en rojo.
+  \item \texttt{Estado 2:} Intervalo de despeje de encrucijada con ambas fases en Todo Rojo.
+  \item \texttt{Estado 3:} Habilita el paso vehicular en sentido Este--Oeste, manteniendo la fase Norte--Sur detenida.
+  \item \texttt{Estado 4:} Transición de advertencia en Este--Oeste con luz amarilla activa y Norte--Sur
+    en rojo.
+  \item \texttt{Estado 5:} Segundo intervalo de despeje de encrucijada en Todo Rojo.
+  \item \texttt{Estado 6:} Régimen intermitente encendido con lámparas amarillas activas en ambas fases.
+  \item \texttt{Estado 7:} Régimen intermitente apagado con todas las lámparas desconectadas.
+\end{itemize}
+
+El funcionamiento se rige directamente por la tabla de duraciones almacenada en los registros Modbus
+\texttt{REG\_TIME\_INT1} a \texttt{REG\_TIME\_INT8}. En cada iteración, la tarea evalúa la duración del estado
+correspondiente:
+\begin{itemize}
+  \item Si la duración es mayor a cero ($t > 0$), se actualiza el registro \texttt{REG\_FSM\_STATE}, se
+    asientan las máscaras de lámparas en \texttt{REG\_LIGHTS\_NS} y \texttt{REG\_LIGHTS\_EO}, y se comutan las salidas de
+    hardware mediante \texttt{vHardwareSetLights}. La espera temporal se ejecuta segundo a segundo con
+    \texttt{vTaskDelay(pdMS\_TO\_TICKS(1000))}; en cada segundo se examina si el registro fue puesto en cero por el
+    maestro, permitiendo truncar o acelerar la transición en caliente sin latencias residuales.
+  \item Si la duración es nula ($t = 0\s$), el estado se omite de forma instantánea sin demora, avanzando el índice
+    hacia el siguiente intervalo del anillo.
+\end{itemize}
+
+Esta arquitectura unificada y gobernada por tabla elimina la necesidad de bifurcaciones asíncronas o modos forzados
+rígidos: en el régimen vehicular ordinario, los Estados 6 y 7 se configuran con duración $0\s$, recorriéndose
+exclusivamente los Estados 0 al 5. Por el contrario, para establecer un régimen intermitente de precaución (en horario
+nocturno o ante mantenimiento), basta con reprogramar en cero los intervalos 1 al 6 y asignar la cadencia deseada a los
+intervalos 7 y 8 (por ejemplo, $1\s$ activo y $1\s$ inactivo), logrando la conmutación de forma fluida y determinística.
+
+\section{Tarea de Adquisición de Transductores y Diagnóstico}
+\label{sec:inputs_task}
+
+La tarea \texttt{vReadInputsTask} se ejecuta con prioridad 2 y periodicidad estricta de $100\ms$ mediante la función
+\texttt{vTaskDelayUntil}, eliminando derivas temporales en la adquisición de señales. En cada ciclo operativo se
+desarrollan cuatro procesos de medición y diagnóstico:
+
+En primer lugar, se adquiere la tensión del divisor resistivo vinculado al LDR en el pin PB0. Con el propósito de
+atenuar fluctuaciones por ruido de conmutación, la tarea promedia cuatro conversiones consecutivas y transforma el valor
+crudo de 12 bits a milivoltios. Dicho valor se almacena en el registro \texttt{REG\_LDR\_MV} y se evalúa frente al
+parámetro \texttt{REG\_LDR\_THRESHOLD\_MV} (fijado por defecto en $2000\mV$). Si la lectura supera este umbral, se
+activa el bit de detección nocturna en el registro de entradas digitales (\texttt{INPUT\_LDR\_NIGHT}).
+
+En segundo lugar, se muestrea el pin PB1, en el cual se conectó un potenciómetro que emula la corriente total consumida
+por las lámparas del semáforo en un rango de $0$ a $1200\mA$.
+
+En tercer lugar, se evalúa la presencia de la red eléctrica primaria y se estima el nivel de tensión de la batería de
+respaldo en el registro \texttt{REG\_BATTERY\_MV}. En ausencia de suministro de red, el algoritmo simula la descarga
+progresiva de la batería; al descender la tensión por debajo de $11.0\V$, se asienta la alarma correspondiente en el
+registro de fallas.
+
+Por último, el firmware calcula la corriente total que teóricamente deberían drenar los cabezales luminosos en base
+al número de lámparas activas en ambas fases:
+\begin{equation}
+  I_{\mathrm{esperada}} = N_{\mathrm{activas}} \cdot I_{\mathrm{nominal}}
+  \label{eq:corriente_esperada}
+\end{equation}
+donde $I_{\mathrm{nominal}}$ se encuentra definido en \texttt{REG\_LAMP\_CURRENT\_MA}. Sobre este valor se determina una
+banda admisible de corriente aplicando la tolerancia porcentual estipulada en \texttt{REG\_CURRENT\_TOL\_PCT}:
+\begin{gather}
+  I_{\mathrm{min}} = I_{\mathrm{esperada}} \cdot \left(1 - \frac{\mathrm{Tol}\%}{100}\right) \nonumber \\
+  I_{\mathrm{max}} = I_{\mathrm{esperada}} \cdot \left(1 + \frac{\mathrm{Tol}\%}{100}\right)
+  \label{eq:banda_tolerancia}
+\end{gather}
+
+Si la corriente medida en PB1 resulta inferior a $I_{\mathrm{min}}$ habiendo lámparas encendidas, el sistema asume
+la desconexión o rotura de filamentos y levanta la bandera de lámpara quemada (\texttt{FAULT\_LAMP\_BURNED}). Por el
+contrario, si supera $I_{\mathrm{max}}$, se reporta un evento de sobrecorriente o cortocircuito
+(\texttt{FAULT\_OVERCURRENT}). De esta forma, la central electrónica efectúa un monitoreo en tiempo real del estado de
+los emisores luminosos.
+
+\section{Tarea de Comunicaciones Serie y Protocolo Modbus RTU}
+\label{sec:modbus_task}
+
+La atención de las comunicaciones reside en la tarea \texttt{vSerialCommTask}, configurada con prioridad 2. La
+recepción física de datos se gestiona mediante la rutina de interrupción \texttt{USART1\_IRQHandler}. Cuando el
+registro de recepción contiene un byte nuevo (\texttt{RXNE}), este se introduce en la cola \texttt{xUartRxQueue}
+utilizando la función no bloqueante \texttt{xQueueSendFromISR}.
+
+Para estructurar las tramas sin recurrir a sondeos que degraden el rendimiento de la CPU, la tarea adopta una lógica
+de espera dual: cuando el búfer de recepción se encuentra vacío, la tarea se bloquea por tiempo indefinido
+(\texttt{portMAX\_DELAY}), asegurando un consumo de procesamiento nulo. Una vez ingresado el primer carácter, el tiempo
+máximo de espera en cola se ajusta a $5\ms$. Este valor satisface holgadamente el criterio de silencio entre tramas
+$t_{3.5}$ estipulado en la norma Modbus RTU para velocidades superiores a $19200$ baudios. Cuando el temporizador
+vence sin que ingresen nuevos caracteres, se da por finalizada la trama y se procede a su decodificación.
+
+El paquete se somete al cálculo del código de redundancia cíclica de 16 bits (CRC16) con el polinomio reflejado
+$0\mathrm{xA001}$. Si el código coincide con el recibido y el primer byte concuerda con la dirección asignada a la
+central (\texttt{MODBUS\_SLAVE\_ID = 1}), se ejecuta la función \texttt{vModbusProcessFrame}, la cual procesa dos
+códigos de función estándar:
+\begin{itemize}
+  \item \texttt{Función 0x03 (Read Holding Registers):} Extrae un bloque contiguo de variables del vector global
+  \texttt{g\_modbus\_registers}, armando el mensaje de respuesta con el conteo de bytes y su correspondiente CRC.
+  \item \texttt{Función 0x06 (Write Single Register):} Permite al maestro modificar en caliente un registro de
+  configuración (como las duraciones de los intervalos temporales o los umbrales de diagnóstico). La respuesta
+  consiste en el eco exacto de la trama recibida.
+\end{itemize}
+
+\section{Mapa de Registros Modbus RTU}
+\label{sec:mapa_modbus}
+
+En la tabla~\ref{tab:mapa_modbus} se detalla la distribución de variables en el vector global compartido,
+especificando las direcciones lógicas, el significado de cada registro y los valores nominales cargados durante la
+fase de arranque.
+
+\begin{table}[!ht]
+  \centering
+  \small
+  \renewcommand{\arraystretch}{1.18}
+  \caption{Mapa de registros Modbus RTU implementado en el firmware de la central.}
+  \label{tab:mapa_modbus}
+  \begin{tabular}{c l c c p{6.5cm}}
+    \toprule
+    \textbf{Reg.} & \textbf{Nombre Simbólico} & \textbf{Acceso} & \textbf{Valor} & \textbf{Descripción} \\
+    \midrule
+    0 & \texttt{REG\_TIME\_INT1} & R/W & $25\s$ & Duración Intervalo 1: NS Verde / EO Rojo \\
+    1 & \texttt{REG\_TIME\_INT2} & R/W & $3\s$  & Duración Intervalo 2: NS Amarillo / EO Rojo \\
+    2 & \texttt{REG\_TIME\_INT3} & R/W & $2\s$  & Duración Intervalo 3: Despeje Todo Rojo \\
+    3 & \texttt{REG\_TIME\_INT4} & R/W & $25\s$ & Duración Intervalo 4: NS Rojo / EO Verde \\
+    4 & \texttt{REG\_TIME\_INT5} & R/W & $3\s$  & Duración Intervalo 5: NS Rojo / EO Amarillo \\
+    5 & \texttt{REG\_TIME\_INT6} & R/W & $2\s$  & Duración Intervalo 6: Despeje Todo Rojo \\
+    6 & \texttt{REG\_TIME\_INT7} & R/W & $0\s$  & Duración Intervalo 7: Intermitente ON (Amarillos) \\
+    7 & \texttt{REG\_TIME\_INT8} & R/W & $0\s$  & Duración Intervalo 8: Intermitente OFF (Apagados) \\
+    8 & \texttt{REG\_FSM\_STATE} & R   & 0      & Estado activo de la máquina de estados (0 a 7) \\
+    9 & \texttt{REG\_LIGHTS\_NS} & R   & 0      & Luces Norte--Sur [B0:R, B1:A, B2:V, B3:Peat] \\
+    10 & \texttt{REG\_LIGHTS\_EO} & R  & 0      & Luces Este--Oeste [B0:R, B1:A, B2:V, B3:Peat] \\
+    11 & \texttt{REG\_BATTERY\_MV} & R & $12600\mV$ & Tensión estimada de batería de respaldo \\
+    12 & \texttt{REG\_CURRENT\_MA} & R & $0\mA$     & Corriente total medida por transductor \\
+    13 & \texttt{REG\_INPUTS\_DIGITAL} & R & 1   & Entradas [B0: Red 220V, B1: Noche LDR] \\
+    14 & \texttt{REG\_FAULT\_FLAGS} & R    & 0   & Fallas [B0: Lámpara, B1: Bat baja, B2: Imax] \\
+    15 & \texttt{REG\_LDR\_MV} & R         & $500\mV$ & Tensión analógica leída en sensor LDR \\
+    16 & \texttt{REG\_LDR\_THRESHOLD\_MV} & R/W & $2000\mV$ & Umbral de conmutación crepuscular \\
+    17 & \texttt{REG\_LAMP\_CURRENT\_MA} & R/W & $200\mA$ & Corriente nominal por lámpara activa \\
+    18 & \texttt{REG\_CURRENT\_TOL\_PCT} & R/W & $35\%$   & Tolerancia de corriente admisible \\
+    19 & \texttt{REG\_EXPECTED\_CURR\_MA} & R  & $400\mA$ & Corriente calculada según luces activas \\
+    \bottomrule
+  \end{tabular}
+\end{table}

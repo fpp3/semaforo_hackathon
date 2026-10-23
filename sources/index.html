@@ -832,9 +832,9 @@
                     <div id="simCurrentControls" style="border-top: 1px solid var(--border); padding-top: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
                         <span class="data-label" style="color: var(--status-warn);">EMULADOR POTENCIÓMETRO (PB1):</span>
                         <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simInjectFault('normal')">✔️ NORMAL</button>
-                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simInjectFault('burned')">⚠️ LÁMPARA QUEMADA</button>
-                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simInjectFault('overcurrent')">🔥 SOBRECORRIENTE</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simInjectFault('normal')">[OK] NORMAL</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simInjectFault('burned')">[ALERTA] LÁMPARA QUEMADA</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simInjectFault('overcurrent')">[FALLA] SOBRECORRIENTE</button>
                             <input type="range" id="simCurrSlider" min="0" max="1200" step="10" value="400" style="width: 100px;" oninput="simOnCurrSliderChange(this.value)">
                             <span id="simCurrSliderVal" style="font-size: 11px; min-width: 55px;">400 mA</span>
                         </div>
@@ -922,8 +922,8 @@
                     <div id="simLdrControls" style="border-top: 1px solid var(--border); padding-top: 8px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
                         <span class="data-label" style="color: var(--status-warn);">EMULADOR LDR (MODO SIMULACIÓN):</span>
                         <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simSetLdrVoltage(500)">☀️ DÍA (500 mV)</button>
-                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simSetLdrVoltage(2600)">🌙 NOCHE (2600 mV)</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simSetLdrVoltage(500)">[SOL] DÍA (500 mV)</button>
+                            <button style="font-size: 10px; padding: 4px 8px;" onclick="simSetLdrVoltage(2600)">[NOCHE] NOCHE (2600 mV)</button>
                             <input type="range" id="simLdrSlider" min="100" max="3200" step="50" value="600" style="width: 110px;" oninput="simOnSliderChange(this.value)">
                             <span id="simLdrSliderVal" style="font-size: 11px; min-width: 50px;">600 mV</span>
                         </div>
@@ -1288,10 +1288,10 @@
             const condTag = document.getElementById('ldrConditionTag');
             if (isNight) {
                 condTag.className = 'status-tag simulated';
-                condTag.textContent = '🌙 OSCURIDAD (NOCHE)';
+                condTag.textContent = '[NOCHE] OSCURIDAD (NOCHE)';
             } else {
                 condTag.className = 'status-tag connected';
-                condTag.textContent = '☀️ LUZ DE DÍA (NORMAL)';
+                condTag.textContent = '[SOL] LUZ DE DÍA (NORMAL)';
             }
 
             // Flags discretas
@@ -1389,13 +1389,13 @@
                     currTag.style.borderColor = 'var(--status-err)';
                     currTag.style.color = 'var(--status-err)';
                     currTag.style.background = '#281010';
-                    currTag.textContent = '⚠️ FALLA: LÁMPARA QUEMADA';
+                    currTag.textContent = '[ALERTA] FALLA: LÁMPARA QUEMADA';
                 } else if (overFault) {
                     currTag.className = 'status-tag simulated';
                     currTag.style.borderColor = 'var(--status-err)';
                     currTag.style.color = 'var(--status-err)';
                     currTag.style.background = '#281010';
-                    currTag.textContent = '🔥 FALLA: SOBRECORRIENTE';
+                    currTag.textContent = '[FALLA] FALLA: SOBRECORRIENTE';
                 } else {
                     currTag.className = 'status-tag connected';
                     currTag.style.borderColor = 'var(--status-ok)';
